@@ -718,8 +718,9 @@ describe("queueComposerMessage", () => {
     });
 
     expect(result.queued?.text).toBe("draft");
+    expect(result.queued?.queuedAt).toEqual(expect.any(Number));
     expect(queue.state.get("agent")).toEqual([
-      { id: result.queued?.id, text: "draft", attachments: [] },
+      { id: result.queued?.id, queuedAt: result.queued?.queuedAt, text: "draft", attachments: [] },
     ]);
   });
 

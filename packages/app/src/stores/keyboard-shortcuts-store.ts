@@ -6,6 +6,8 @@ const SHORTCUT_BADGE_DELAY_MS = 150;
 
 interface KeyboardShortcutsState {
   commandCenterOpen: boolean;
+  commandCenterSearchMode: "quick" | "deep";
+  setCommandCenterSearchMode(mode: "quick" | "deep"): void;
   /** The tab the open command center shows. Every opening starts on the tab it asks for. */
   commandCenterTab: CommandCenterTab;
   shortcutsDialogOpen: boolean;
@@ -51,6 +53,8 @@ function updateBadgeTimer(
 
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set, get) => ({
   commandCenterOpen: false,
+  commandCenterSearchMode: "quick",
+  setCommandCenterSearchMode: (commandCenterSearchMode) => set({ commandCenterSearchMode }),
   commandCenterTab: "all",
   shortcutsDialogOpen: false,
   capturingShortcut: false,
@@ -60,7 +64,11 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>((set, ge
   sidebarShortcutWorkspaceTargets: [],
 
   setCommandCenterOpen: (open, tab = "all") =>
-    set({ commandCenterOpen: open, commandCenterTab: open ? tab : "all" }),
+    set({
+      commandCenterOpen: open,
+      commandCenterTab: open ? tab : "all",
+      commandCenterSearchMode: "quick",
+    }),
   setCommandCenterTab: (tab) => set({ commandCenterTab: tab }),
   setShortcutsDialogOpen: (open) => set({ shortcutsDialogOpen: open }),
   setCapturingShortcut: (capturing) => set({ capturingShortcut: capturing }),

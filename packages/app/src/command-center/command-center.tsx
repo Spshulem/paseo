@@ -5,6 +5,7 @@ import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import {
   FlatList,
   Pressable,
+  Switch,
   Text,
   View,
   type LayoutChangeEvent,
@@ -101,6 +102,8 @@ import {
 } from "./tabs";
 import { createCommandCenterInteraction, type CommandCenterInteraction } from "./interaction";
 import { useWorkspaceFileSearch } from "./workspace-file-search";
+import { useConversationSearch } from "./conversation-search";
+import { useSettings } from "@/hooks/use-settings";
 
 const ThemedBottomSheetTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
@@ -341,6 +344,11 @@ interface CommandCenterState {
   tabs: readonly CommandCenterTab[];
   tab: CommandCenterTab;
   selectTab(tab: CommandCenterTab): void;
+  scope: "files" | "deep" | null;
+  setSearchMode(mode: "quick" | "deep"): void;
+  deepSearchIncludeArchived: boolean;
+  setDeepSearchIncludeArchived(value: boolean): void;
+  deepSearch: ReturnType<typeof useConversationSearch>;
   query: string;
   setQuery(query: string): void;
   activeId: string | null;
@@ -365,6 +373,8 @@ function useCommandCenterState(
   const setOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const setTab = useKeyboardShortcutsStore((state) => state.setCommandCenterTab);
   const snapshot = useCommandCenterContributions();
+  const deepSearchIncludeArchived = useSettings((settings) => settings.deepSearchIncludeArchived);
+  const { updateSettings } = useSettings();
   const inputRef = useRef<EditingTextInputHandle>(null);
   const previousOpenRef = useRef(open);
   const { query, activeId } = useSyncExternalStore(interaction.subscribe, interaction.getSnapshot);
@@ -372,6 +382,15 @@ function useCommandCenterState(
   const hasWorkspace = activeWorkspace !== null;
   const tabs = useMemo(() => availableCommandCenterTabs({ hasWorkspace }), [hasWorkspace]);
   const tab = resolveCommandCenterTab(requestedTab, tabs);
+  const searchMode = useKeyboardShortcutsStore((state) => state.commandCenterSearchMode);
+  const setSearchMode = useKeyboardShortcutsStore((state) => state.setCommandCenterSearchMode);
+  let scope: CommandCenterState["scope"] = tab === "files" ? "files" : null;
+  if (searchMode === "deep") scope = "deep";
+  const deepSearch = useConversationSearch(
+    open && scope === "deep",
+    query,
+    deepSearchIncludeArchived,
+  );
   const showBackground = useSidebarViewStore((state) => state.showBackground);
   const listsWorkspaces = tab === "all" || tab === "workspaces";
   const archivedSearch = useArchivedWorkspaceSearch(query, {
@@ -442,11 +461,13 @@ function useCommandCenterState(
     ],
   );
   const projection = useMemo(
-    () => projectCommandCenterRows(sections, listMetrics),
-    [listMetrics, sections],
+    () => projectCommandCenterRows(scope === "deep" ? deepSearch.sections : sections, listMetrics),
+    [deepSearch.sections, listMetrics, scope, sections],
   );
   const loading =
-    fileSearchLoading || (listsWorkspaces && (archivedSearch.pending || workspaceRows.loading));
+    scope === "deep"
+      ? deepSearch.loading
+      : fileSearchLoading || (listsWorkspaces && (archivedSearch.pending || workspaceRows.loading));
   useLayoutEffect(() => {
     interaction.update({ open, tab, query, projection, loading });
   }, [interaction, open, tab, query, projection, loading]);
@@ -531,6 +552,13 @@ function useCommandCenterState(
     tabs,
     tab,
     selectTab,
+    scope,
+    setSearchMode,
+    deepSearchIncludeArchived,
+    setDeepSearchIncludeArchived: (value) => {
+      void updateSettings({ deepSearchIncludeArchived: value });
+    },
+    deepSearch,
     query,
     setQuery: interaction.setQuery,
     activeId,
@@ -966,10 +994,19 @@ export function CommandCenter() {
   const keyExtractor = useCallback((row: CommandCenterListRow) => row.key, []);
   const empty = useMemo(
     () =>
-      state.fileSearchError || state.fileSearchLoading ? null : (
+      state.fileSearchError ||
+      state.fileSearchLoading ||
+      (state.scope === "deep" && (state.deepSearch.loading || state.deepSearch.hasError)) ? null : (
         <Text style={styles.emptyText}>{t("shell.commandCenter.noMatches")}</Text>
       ),
-    [state.fileSearchError, state.fileSearchLoading, t],
+    [
+      state.fileSearchError,
+      state.fileSearchLoading,
+      state.scope,
+      state.deepSearch.loading,
+      state.deepSearch.hasError,
+      t,
+    ],
   );
   const fileSearchError = useMemo(
     () =>
@@ -1043,7 +1080,11 @@ export function CommandCenter() {
       testID="command-center-tabs"
     />
   );
-  const placeholder = t(placeholderKey(state.tab, state.tabs));
+  const placeholder = t(
+    state.scope === "deep"
+      ? "shell.commandCenter.deepPlaceholder"
+      : placeholderKey(state.tab, state.tabs),
+  );
 
   if (showBottomSheet) {
     return (
@@ -1086,6 +1127,7 @@ export function CommandCenter() {
             </View>
           </View>
           <View style={styles.tabBar}>{tabs}</View>
+          <SearchModes state={state} />
           {fileSearchError}
           <BottomSheetFlatList ref={bottomSheetListRef} {...commonListProps} />
         </OverlayLayerProvider>
@@ -1119,12 +1161,87 @@ export function CommandCenter() {
               </View>
             </View>
             <View style={styles.tabBar}>{tabs}</View>
+            <SearchModes state={state} />
             {fileSearchError}
             <FlatList ref={listRef} {...commonListProps} />
           </View>
         </View>
       </Modal>
     </OverlayLayerProvider>
+  );
+}
+
+function SearchModeButton({
+  mode,
+  selected,
+  onSelect,
+}: {
+  mode: "quick" | "deep";
+  selected: boolean;
+  onSelect: CommandCenterState["setSearchMode"];
+}) {
+  const { t } = useTranslation();
+  const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  const press = useCallback(() => onSelect(mode), [onSelect, mode]);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      testID={`command-center-mode-${mode}`}
+      onPress={press}
+      style={[styles.searchModeButton, selected && styles.activeRow]}
+    >
+      <Text style={styles.title}>{t(`shell.commandCenter.${mode}`)}</Text>
+    </Pressable>
+  );
+}
+
+function SearchModes({ state }: { state: CommandCenterState }) {
+  const { t } = useTranslation();
+  if (state.scope === "files") return null;
+  const deep = state.scope === "deep";
+  return (
+    <View style={styles.searchModes}>
+      <View style={styles.searchModeButtons}>
+        {(["quick", "deep"] as const).map((mode) => (
+          <SearchModeButton
+            key={mode}
+            mode={mode}
+            selected={deep === (mode === "deep")}
+            onSelect={state.setSearchMode}
+          />
+        ))}
+      </View>
+      {deep && (
+        <Text style={styles.searchDescription}>{t("shell.commandCenter.deepDescription")}</Text>
+      )}
+      {deep && (
+        <View style={styles.searchArchivedRow}>
+          <Switch
+            value={state.deepSearchIncludeArchived}
+            onValueChange={state.setDeepSearchIncludeArchived}
+            accessibilityLabel={t("shell.commandCenter.includeArchived")}
+            testID="command-center-include-archived"
+          />
+          <Text style={styles.searchDescription}>{t("shell.commandCenter.includeArchived")}</Text>
+        </View>
+      )}
+      {deep &&
+        state.deepSearch.messages.map((message) => (
+          <Text key={message} style={styles.searchDescription} accessibilityLiveRegion="polite">
+            {message}
+          </Text>
+        ))}
+      {deep && state.deepSearch.hasError && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={state.deepSearch.retry}
+          style={styles.searchModeButton}
+        >
+          <Text style={styles.title}>{t("common.actions.retry")}</Text>
+        </Pressable>
+      )}
+    </View>
   );
 }
 
@@ -1185,6 +1302,24 @@ const styles = StyleSheet.create((theme) => ({
   },
   growingInput: { flex: 1, minWidth: 0 },
   searchRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
+  searchModes: {
+    paddingHorizontal: theme.spacing[3],
+    paddingBottom: theme.spacing[2],
+    gap: theme.spacing[1],
+  },
+  searchModeButtons: { flexDirection: "row", gap: theme.spacing[1] },
+  searchModeButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+  },
+  searchDescription: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 18,
+  },
+  searchArchivedRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
   fileSearchStatus: { width: 14, height: 14, alignItems: "center", justifyContent: "center" },
   results: { flex: 1 },
   // Sections and rows take their height from list-metrics; these styles only place content in it.

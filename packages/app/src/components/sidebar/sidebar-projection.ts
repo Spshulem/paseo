@@ -19,7 +19,11 @@ import {
   type SidebarShortcutModel,
   type SidebarShortcutSection,
 } from "@/utils/sidebar-shortcuts";
-import { statusWorkspaceGroups, type SidebarWorkspaceGroup } from "./sidebar-labels";
+import {
+  labelWorkspaceGroups,
+  statusWorkspaceGroups,
+  type SidebarWorkspaceGroup,
+} from "./sidebar-labels";
 
 export interface SidebarProjection {
   pinnedGroups: PinnedSidebarGroups;
@@ -77,10 +81,7 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
     );
   } else {
     sections.push(
-      ...workspaceGroups.map((group) => ({
-        workspaces: group.rows,
-        collapsed: input.collapsedWorkspaceGroupKeys.has(group.key),
-      })),
+      ...workspaceGroupShortcutSections(workspaceGroups, input.collapsedWorkspaceGroupKeys),
     );
   }
 
@@ -92,7 +93,7 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
   };
 }
 
-/** Project mode keeps its project headers and groups nothing; status mode groups the rows. */
+/** Project headers own their rows; other modes group the same workspace entries. */
 function buildWorkspaceGroups(
   input: SidebarProjectionInput,
   unpinnedWorkspaces: SidebarWorkspaceEntry[],
@@ -100,9 +101,46 @@ function buildWorkspaceGroups(
   switch (input.groupMode) {
     case "project":
       return [];
+    case "label":
+      return labelWorkspaceGroups(unpinnedWorkspaces, input.t("workspaceLabels.unlabelled"));
+    case "status_label":
+      return statusWorkspaceGroups(
+        buildStatusGroups(unpinnedWorkspaces, input.projectNamesByViewKey, input.t),
+      ).map((group) => {
+        group.children = scopeWorkspaceGroups(
+          labelWorkspaceGroups(group.rows, input.t("workspaceLabels.unlabelled")),
+          group.key,
+        );
+        group.rows = [];
+        return group;
+      });
     case "status":
       return statusWorkspaceGroups(
         buildStatusGroups(unpinnedWorkspaces, input.projectNamesByViewKey, input.t),
       );
   }
+}
+
+function workspaceGroupShortcutSections(
+  groups: readonly SidebarWorkspaceGroup[],
+  collapsed: ReadonlySet<string>,
+): SidebarShortcutSection[] {
+  const sections: SidebarShortcutSection[] = [];
+  for (const group of groups) {
+    if (collapsed.has(group.key)) continue;
+    sections.push({ workspaces: group.rows });
+    if (group.children) sections.push(...workspaceGroupShortcutSections(group.children, collapsed));
+  }
+  return sections;
+}
+
+function scopeWorkspaceGroups(
+  groups: SidebarWorkspaceGroup[],
+  status: string,
+): SidebarWorkspaceGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    key: `${status}:${group.key}`,
+    ...(group.children ? { children: scopeWorkspaceGroups(group.children, status) } : {}),
+  }));
 }
