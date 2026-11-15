@@ -123,7 +123,7 @@ export default {
       ...(variant.googleServiceInfoPlist
         ? { googleServicesFile: variant.googleServiceInfoPlist }
         : {}),
-      buildNumber: nativeReleaseVersion.iosBuildNumber,
+      buildNumber: appVariant === "groups" ? "16000003" : nativeReleaseVersion.iosBuildNumber,
     },
     android: {
       adaptiveIcon: {

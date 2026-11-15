@@ -34,6 +34,7 @@ it("preserves the private Groups identity and local network permission", async (
     expect(exp.name).toBe("Paseo Groups");
     expect(exp.scheme).toBe("paseo-groups");
     expect(exp.ios.bundleIdentifier).toBe("app.buildbetter.paseogroups");
+    expect(exp.ios.buildNumber).toBe("16000003");
     expect(exp.ios.infoPlist.NSLocalNetworkUsageDescription).toContain("Tailscale");
     expect(exp.ios.infoPlist.NSLocalNetworkUsageDescription).not.toBe(
       "Allow $(PRODUCT_NAME) to find and connect to devices on your local network.",
