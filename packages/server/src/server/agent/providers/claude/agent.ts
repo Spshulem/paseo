@@ -11,6 +11,7 @@ import path from "node:path";
 import { LRUCache } from "lru-cache";
 import stripAnsi from "strip-ansi";
 import { createImportDescriptorScheduler } from "./import-descriptor-scheduler.js";
+import { bypassApprovesAsk } from "./bypass-approval.js";
 import {
   type AgentDefinition,
   type CanUseTool,
@@ -2862,6 +2863,7 @@ class ClaudeAgentSession implements AgentSession {
         ? thinkingOptionId
         : null;
 
+    const previousThinkingOptionId = this.config.thinkingOptionId;
     if (!normalizedThinkingOptionId || normalizedThinkingOptionId === "default") {
       this.config.thinkingOptionId = undefined;
     } else if (isClaudeThinkingOption(normalizedThinkingOptionId)) {
@@ -2870,9 +2872,32 @@ class ClaudeAgentSession implements AgentSession {
     } else {
       throw new Error(`Unknown thinking option: ${normalizedThinkingOptionId}`);
     }
-    this.queryRestartNeeded = true;
+    if (!(await this.applyEffortToRunningQuery(previousThinkingOptionId))) {
+      this.queryRestartNeeded = true;
+    }
     if (this.activeForegroundTurnId || this.autonomousTurn) {
       return THINKING_APPLIES_NEXT_TURN_NOTICE;
+    }
+  }
+
+  // A move between two effort levels changes only the effort, which a running Claude process
+  // takes through flag settings, so the process and its background work stay. Switching thinking
+  // off, to ultracode or back to the default changes how the query is launched, so it still
+  // restarts the query. The recorded option feeds every later launch either way.
+  private async applyEffortToRunningQuery(
+    previousThinkingOptionId: string | undefined,
+  ): Promise<boolean> {
+    const effort = this.config.thinkingOptionId;
+    if (!this.query || this.queryRestartNeeded) return false;
+    if (!isClaudeThinkingEffort(previousThinkingOptionId) || !isClaudeThinkingEffort(effort)) {
+      return false;
+    }
+    try {
+      await this.query.applyFlagSettings({ effortLevel: effort });
+      return true;
+    } catch (error) {
+      this.logger.warn({ err: error, effort }, "Claude did not take a live effort change");
+      return false;
     }
   }
 
@@ -5332,10 +5357,8 @@ class ClaudeAgentSession implements AgentSession {
     input,
     options,
   ): Promise<PermissionResult> => {
-    // Decide before publishing anything: bypassed tools never enter the permission UI.
-    // Claude also routes questions and plan review through this callback.
-    const needsUserAnswer = toolName === "AskUserQuestion" || toolName === "ExitPlanMode";
-    if (this.currentMode === "bypassPermissions" && !needsUserAnswer) {
+    // Decide before publishing anything: bypassed asks never enter the permission UI.
+    if (this.currentMode === "bypassPermissions" && bypassApprovesAsk(toolName, options)) {
       return { behavior: "allow", updatedInput: input, toolUseID: options.toolUseID };
     }
 
