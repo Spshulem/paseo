@@ -95,6 +95,7 @@ import { projectIconCache } from "@/projects/icon-cache";
 import { createPerformanceTrace } from "@/performance/native-trace";
 import { revokePushNotifications } from "@/push-notifications";
 import { createAppWebSocketFactory } from "./websocket-factory";
+import { readQueuedMessages, writeQueuedMessages } from "./queued-message-storage";
 
 export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
 export type PairingNavigationTarget = "openProject" | "hostRoot" | "hostSettings";
@@ -1701,6 +1702,7 @@ export class HostRuntimeStore {
   private lastConnectionStatusByServer = new Map<string, HostRuntimeConnectionStatus>();
   private connectionStatusStartedAtByServer = new Map<string, number>();
   private queuedAgentDrainInFlight = new Set<string>();
+  private queuedMessageSubscriptions = new Map<string, () => void>();
   private directorySyncByServer = new Map<string, DirectorySync>();
   private nextCancellationRequestId = 0;
   private timelineReplicaByServer = new Map<string, TimelineReplica>();
@@ -1987,13 +1989,9 @@ export class HostRuntimeStore {
     const snapshot = controller.getSnapshot();
     this.clearHostReplica(oldServerId);
     this.syncSessionReplica(newServerId, snapshot);
-    directory.connectionChanged({
-      client: snapshot.client,
-      status: snapshot.connectionStatus === "online" ? "online" : "offline",
-      source: {
-        clientGeneration: snapshot.clientGeneration,
-        connectionEpoch: snapshot.connectionEpoch,
-      },
+    void this.restoreQueuedMessages(newServerId, controller).then(() => {
+      if (this.controllers.get(newServerId) !== controller) return undefined;
+      return this.syncDirectoryConnection(newServerId);
     });
 
     const listeners = this.serverListeners.get(oldServerId);
@@ -2508,19 +2506,54 @@ export class HostRuntimeStore {
         this.syncHostDiscovery(snapshot.serverId);
         this.emit(snapshot.serverId);
       });
-      void controller
-        .start(
-          initialConnection
-            ? {
-                initialConnection,
-              }
-            : {},
-        )
+      void this.restoreQueuedMessages(host.serverId, controller)
+        .then(() => {
+          if (this.controllers.get(host.serverId) !== controller) return;
+          return controller.start(initialConnection ? { initialConnection } : {});
+        })
         .catch((error) => {
           const message = error instanceof Error ? error.message : String(error);
           controller.markStartupError(message);
         });
       this.emit(host.serverId);
+    }
+  }
+
+  private async restoreQueuedMessages(
+    serverId: string,
+    controller: HostRuntimeController,
+  ): Promise<void> {
+    const restored = await readQueuedMessages(this.storage, serverId).catch((error) => {
+      console.warn("[HostRuntime] Failed to restore queued messages", { serverId, error });
+      return null;
+    });
+    if (this.controllers.get(serverId) !== controller) return;
+    const session = useSessionStore.getState().sessions[serverId];
+    if (!session) return;
+    const persist = (queues: typeof session.queuedMessages) => {
+      void writeQueuedMessages(this.storage, serverId, queues).catch((error) => {
+        console.warn("[HostRuntime] Failed to persist queued messages", { serverId, error });
+      });
+    };
+    const unsubscribe = useSessionStore.subscribe(
+      (state) => state.sessions[serverId]?.queuedMessages,
+      (queues) => {
+        if (queues) persist(queues);
+      },
+    );
+    this.queuedMessageSubscriptions.set(serverId, unsubscribe);
+    if (restored?.size) {
+      for (const [agentId, messages] of session.queuedMessages) {
+        const earlier = restored.get(agentId) ?? [];
+        const currentIds = new Set(messages.map((message) => message.id));
+        restored.set(agentId, [
+          ...earlier.filter((message) => !currentIds.has(message.id)),
+          ...messages,
+        ]);
+      }
+      useSessionStore.getState().setQueuedMessages(serverId, restored);
+    } else if (session.queuedMessages.size) {
+      persist(session.queuedMessages);
     }
   }
 
@@ -2591,6 +2624,8 @@ export class HostRuntimeStore {
   }
 
   private clearHostReplica(serverId: string): void {
+    this.queuedMessageSubscriptions.get(serverId)?.();
+    this.queuedMessageSubscriptions.delete(serverId);
     useSessionStore.getState().clearSession(serverId);
     useWorkspaceSetupStore.getState().clearServer(serverId);
   }

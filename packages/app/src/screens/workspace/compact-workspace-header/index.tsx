@@ -23,6 +23,7 @@ interface CompactWorkspaceHeaderProps {
   subtitle: string;
   isSubtitleDistinct: boolean;
   onToggleExplorer: () => void;
+  onChatBack?: () => void;
   explorerToggleLabel: string;
   explorerToggleAccessibilityState: { expanded: boolean };
   tabSwitcher: ReactNode;
@@ -39,6 +40,7 @@ export function CompactWorkspaceHeader({
   subtitle,
   isSubtitleDistinct,
   onToggleExplorer,
+  onChatBack,
   explorerToggleLabel,
   explorerToggleAccessibilityState,
   children,
@@ -86,6 +88,7 @@ export function CompactWorkspaceHeader({
           titleTestID="workspace-header-title"
           subtitle={projectRow}
           loading={isLoading}
+          onChatBack={onChatBack}
           actions={actionsInBar ? undefined : actions}
         />
       ) : null}

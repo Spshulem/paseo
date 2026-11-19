@@ -50,6 +50,8 @@ import type { Theme } from "@/styles/theme";
 import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/sidebar-menu-toggle";
 import { ScreenHeader } from "@/components/headers/screen-header";
+import { BackButton } from "@/components/headers/compact-header";
+import { useChatBack } from "@/navigation/use-chat-back";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { FloatingHeaderLayout } from "@/components/floating-header";
 import { StreamTopOverlayProvider, supportsStreamTopOverlay } from "@/agent-stream/top-overlay";
@@ -1499,6 +1501,15 @@ function WorkspaceScreenContent({
     }
     return target.terminalId;
   }, [focusedPaneTabState.activeTab]);
+
+  const onChatBack = useChatBack({
+    serverId: normalizedServerId,
+    workspaceId: normalizedWorkspaceId,
+    agentId: focusedPaneAgentId,
+    isRouteFocused,
+    isMobile,
+    workspacePanelActive,
+  });
 
   useEffect(() => {
     if (!isRouteFocused) {
@@ -3355,6 +3366,7 @@ function WorkspaceScreenContent({
           left={
             <>
               <SidebarMenuToggle />
+              {onChatBack ? <BackButton onBack={onChatBack} testID="workspace-chat-back" /> : null}
               <WorkspaceHeaderTitleBar
                 isLoading={isWorkspaceHeaderLoading}
                 title={workspaceHeaderTitle}
@@ -3384,6 +3396,7 @@ function WorkspaceScreenContent({
       headerRight,
       isWorkspaceHeaderLoading,
       normalizedServerId,
+      onChatBack,
       openImportSheet,
       showScreenHeader,
       showWorkspaceSetup,
@@ -3471,6 +3484,7 @@ function WorkspaceScreenContent({
           isSubtitleDistinct={isWorkspaceHeaderSubtitleDistinct}
           serverId={normalizedServerId}
           onToggleExplorer={handleToggleExplorerSidebar}
+          onChatBack={onChatBack}
           explorerToggleLabel={explorerSidebarToggleLabel}
           explorerToggleAccessibilityState={explorerSidebarToggleAccessibilityState}
         >
@@ -3518,6 +3532,7 @@ function WorkspaceScreenContent({
       isWorkspaceHeaderSubtitleDistinct,
       normalizedServerId,
       normalizedWorkspaceId,
+      onChatBack,
       openImportSheet,
       showCreateBrowserTab,
       showWorkspaceSetup,

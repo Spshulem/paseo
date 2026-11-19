@@ -37,6 +37,8 @@ interface CompactHeaderProps {
   loading?: boolean;
   /** Icon actions inherit the island chrome through the shared button primitives. */
   actions?: ReactNode;
+  /** Return to the prior chat without replacing the sidebar menu. */
+  onChatBack?: () => void;
 }
 
 /**
@@ -55,6 +57,7 @@ export function CompactHeader({
   subtitle,
   loading = false,
   actions,
+  onChatBack,
 }: CompactHeaderProps) {
   const insets = useSafeAreaInsets();
   const inTopBand = useTopBand() !== null;
@@ -76,6 +79,7 @@ export function CompactHeader({
         <View style={inTopBand ? styles.topBandRow : styles.row}>
           <View style={styles.island}>
             {navigation === "menu" ? <SidebarMenuToggle /> : <BackButton onBack={onBack} />}
+            {onChatBack ? <BackButton onBack={onChatBack} testID="workspace-chat-back" /> : null}
           </View>
           <View style={styles.titleGroup}>
             <CompactHeaderTitle
@@ -117,7 +121,13 @@ function CompactHeaderTitle({
   );
 }
 
-function BackButton({ onBack }: { onBack?: () => void }) {
+export function BackButton({
+  onBack,
+  testID = "header-back-button",
+}: {
+  onBack?: () => void;
+  testID?: string;
+}) {
   const { t } = useTranslation();
   const handlePress = useCallback(() => {
     if (onBack) {
@@ -132,7 +142,7 @@ function BackButton({ onBack }: { onBack?: () => void }) {
       tooltipLabel={t("common.actions.back")}
       tooltipKeys={NO_SHORTCUT}
       tooltipSide="right"
-      testID="header-back-button"
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={t("common.actions.back")}
     >

@@ -33,6 +33,7 @@ import type { ReplicaRow, ReplicaRowStore } from "./replica-cache/row-store";
 import { subscriptionFixture } from "./subscription-fixture";
 import { readDesktopManagedLocalCredential } from "@/desktop/daemon/local-credential";
 import type { HostConfirmationRequest } from "./host-confirmation";
+import { readQueuedMessages } from "./queued-message-storage";
 
 it("requests the managed connection credential through desktop main without a web hint", async () => {
   const requests: string[] = [];
@@ -3772,6 +3773,61 @@ describe("HostRuntimeStore", () => {
 
     store.syncHosts([]);
     useSessionStore.getState().clearSession(host.serverId);
+  });
+
+  it("restores a queued composer message after restart and sends it when the agent is idle", async () => {
+    const host = makeHost({
+      serverId: "srv_queue_restart",
+      connections: [{ id: "direct:lan:6767", type: "directTcp", endpoint: "lan:6767" }],
+    });
+    const storage = createMemoryHostRuntimeStorage();
+    const createRuntime = () => {
+      const client = new FakeDaemonClient();
+      client.setConnectionState({ status: "connected" });
+      const daemonClient = client as unknown as DaemonClient;
+      const store = new HostRuntimeStore({
+        storage,
+        deps: {
+          createClient: () => daemonClient,
+          connectToDaemon: async () => ({
+            client: daemonClient,
+            serverId: host.serverId,
+            hostname: null,
+          }),
+          getClientId: async () => "cid_queue_restart",
+        },
+      });
+      store.syncHosts([host]);
+      return { store, client };
+    };
+    const first = createRuntime();
+    await waitForHostOnline(first.store, host.serverId);
+    const message = { id: "message-1", text: "Keep this queued", attachments: [] };
+    useSessionStore.getState().setQueuedMessages(host.serverId, new Map([["agent", [message]]]));
+    await expect(readQueuedMessages(storage, host.serverId)).resolves.toEqual(
+      new Map([["agent", [message]]]),
+    );
+    first.store.syncHosts([]);
+
+    const second = createRuntime();
+    const entry = makeFetchAgentsEntry({
+      id: "agent",
+      cwd: "/repo",
+      updatedAt: "2026-07-12T10:00:00.000Z",
+    });
+    second.client.fetchAgentsResponses.push(
+      makeFetchAgentsPayload({
+        entries: [{ ...entry, agent: { ...entry.agent, status: "idle" } }],
+      }),
+    );
+    await waitForHostOnline(second.store, host.serverId);
+    await second.store.refreshAgentDirectory({ serverId: host.serverId });
+    await second.client.waitForSentMessages(1);
+    expect(second.client.sentAgentMessages[0]?.slice(0, 2)).toEqual(["agent", message.text]);
+    await vi.waitFor(async () => {
+      expect(await readQueuedMessages(storage, host.serverId)).toEqual(new Map());
+    });
+    second.store.syncHosts([]);
   });
 
   it("drains queued messages once for snapshot and buffered running transitions", async () => {
