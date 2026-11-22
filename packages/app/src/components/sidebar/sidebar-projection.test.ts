@@ -6,6 +6,114 @@ import type {
   SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { buildSidebarProjection } from "./sidebar-projection";
+import { createRecentConversationsSelector, type RecentAgent } from "./sidebar-recents";
+
+function recentAgent(id: string, sentAt: number | null, workspaceId = "one"): RecentAgent {
+  return {
+    id,
+    title: id,
+    workspaceId,
+    lastUserMessageAt: sentAt === null ? null : new Date(sentAt),
+  };
+}
+
+describe("recent conversations", () => {
+  it("orders individual chats by the user's message, not provider activity or workspace", () => {
+    const select = createRecentConversationsSelector();
+    const agents = new Map([
+      ["old", { ...recentAgent("old", 10), updatedAt: new Date(9999) }],
+      ["new", { ...recentAgent("new", 20), updatedAt: new Date(20) }],
+    ]);
+    const workspace = makeWorkspace("one").entry;
+    const result = select(
+      { srv: { agents, queuedMessages: new Map() } },
+      new Map([[workspace.workspaceKey, workspace]]),
+    );
+    expect(result.map((row) => row.agentId)).toEqual(["new", "old"]);
+    expect(result[0]).toMatchObject({ serverId: "srv", workspaceId: "one", agentId: "new" });
+  });
+
+  it("includes queued sends immediately and excludes hidden, archived and unmessaged chats", () => {
+    const select = createRecentConversationsSelector();
+    const agents = new Map([
+      ["queued", recentAgent("queued", null)],
+      ["sent", recentAgent("sent", 20)],
+      ["empty", recentAgent("empty", null)],
+      ["invalid", recentAgent("invalid", NaN)],
+      ["archived", { ...recentAgent("archived", 999), archivedAt: new Date(1000) }],
+      ["hidden", { ...recentAgent("hidden", 999), background: true }],
+      ["filtered", recentAgent("filtered", 999, "other")],
+    ]);
+    const queuedMessages = new Map([
+      ["queued", [{ id: "q", text: "hi", attachments: [], queuedAt: 30 }]],
+    ]);
+    const workspace = makeWorkspace("one").entry;
+    expect(
+      select(
+        { srv: { agents, queuedMessages } },
+        new Map([[workspace.workspaceKey, workspace]]),
+      ).map((row) => row.agentId),
+    ).toEqual(["queued", "sent"]);
+  });
+
+  it("keeps identical agent IDs on different hosts separate and applies workspace filters", () => {
+    const select = createRecentConversationsSelector();
+    const a = makeWorkspace("one").entry;
+    const b = { ...a, serverId: "other", workspaceKey: "other:one" };
+    const session = {
+      agents: new Map([["same", recentAgent("same", 10)]]),
+      queuedMessages: new Map(),
+    };
+    const sessions = { srv: session, other: session };
+    expect(
+      select(
+        sessions,
+        new Map([
+          [a.workspaceKey, a],
+          [b.workspaceKey, b],
+        ]),
+      ),
+    ).toHaveLength(2);
+    expect(select(sessions, new Map([[b.workspaceKey, b]])).map((row) => row.serverId)).toEqual([
+      "other",
+    ]);
+  });
+
+  it("retains references during streaming and status updates, but updates after a send", () => {
+    const select = createRecentConversationsSelector();
+    const workspace = makeWorkspace("one").entry;
+    const workspaces = new Map([[workspace.workspaceKey, workspace]]);
+    const agents = new Map([["a", recentAgent("a", 10)]]);
+    const queuedMessages = new Map();
+    const result = select({ srv: { agents, queuedMessages } }, workspaces);
+    expect(select({ srv: { agents, queuedMessages } }, workspaces)).toBe(result);
+    expect(select({ srv: { agents: new Map(agents), queuedMessages } }, workspaces)).toBe(result);
+    expect(
+      select(
+        { srv: { agents: new Map([["a", recentAgent("a", 20)]]), queuedMessages } },
+        workspaces,
+      )[0].sentAt,
+    ).toBe(20);
+  });
+
+  it("bounds the list to the twenty most recent chats", () => {
+    const select = createRecentConversationsSelector();
+    const workspace = makeWorkspace("one").entry;
+    const agents = new Map(
+      Array.from({ length: 30 }, (_, index) => [
+        String(index),
+        recentAgent(String(index), index + 1),
+      ]),
+    );
+    const rows = select(
+      { srv: { agents, queuedMessages: new Map() } },
+      new Map([[workspace.workspaceKey, workspace]]),
+    );
+    expect(rows).toHaveLength(20);
+    expect(rows[0].agentId).toBe("29");
+    expect(rows[19].agentId).toBe("10");
+  });
+});
 
 function makeWorkspace(
   id: string,
@@ -65,7 +173,7 @@ function makeProject(
 }
 
 function projectionInput(options?: {
-  groupMode?: "project" | "status";
+  groupMode?: "project" | "status" | "label" | "status_label";
   pinnedCollapsed?: boolean;
 }) {
   const pinned = makeWorkspace("pinned", "running");
@@ -175,4 +283,72 @@ describe("buildSidebarProjection", () => {
       { serverId: "srv", workspaceId: "unpinned" },
     ]);
   });
+});
+
+it("label grouping excludes pins and collapsed buckets from shortcuts and deduplicates multi-label rows", () => {
+  const input = projectionInput({ groupMode: "label" });
+  const shared = makeWorkspace("shared", "running", ["Backend", "Urgent"]);
+  const unlabelled = makeWorkspace("plain");
+  input.workspaceEntriesByKey.set(shared.entry.workspaceKey, shared.entry);
+  input.workspaceEntriesByKey.set(unlabelled.entry.workspaceKey, unlabelled.entry);
+  input.collapsedWorkspaceGroupKeys.add("label:backend");
+  const projection = buildSidebarProjection(input);
+  expect(projection.workspaceGroups.map((group) => group.key)).toEqual([
+    "label:backend",
+    "label:urgent",
+    "label:",
+  ]);
+  expect(projection.shortcutModel.shortcutTargets.map((target) => target.workspaceId)).toEqual([
+    "pinned",
+    "shared",
+    "unpinned",
+    "plain",
+  ]);
+  input.collapsedWorkspaceGroupKeys.clear();
+  expect(
+    buildSidebarProjection(input).shortcutModel.shortcutTargets.map((target) => target.workspaceId),
+  ).toEqual(["pinned", "shared", "unpinned", "plain"]);
+});
+
+it("excludes collapsed product areas and entire collapsed themes from keyboard navigation", () => {
+  const input = projectionInput({ groupMode: "label", pinnedCollapsed: true });
+  const bob = makeWorkspace("bob", "running", ["BuildBetter/Bob"]);
+  const chat = makeWorkspace("chat", "running", ["BuildBetter/AI Chat"]);
+  input.workspaceEntriesByKey = new Map([
+    [bob.entry.workspaceKey, bob.entry],
+    [chat.entry.workspaceKey, chat.entry],
+  ]);
+  input.collapsedWorkspaceGroupKeys.add("label:buildbetter/bob");
+  expect(
+    buildSidebarProjection(input).shortcutModel.shortcutTargets.map((target) => target.workspaceId),
+  ).toEqual(["chat"]);
+  input.collapsedWorkspaceGroupKeys.add("label:buildbetter");
+  expect(buildSidebarProjection(input).shortcutModel.shortcutTargets).toEqual([]);
+});
+
+it("groups themes independently within status and keeps uncategorized workspaces reachable", () => {
+  const input = projectionInput({ groupMode: "status_label", pinnedCollapsed: true });
+  const needsBob = makeWorkspace("needs-bob", "needs_input", ["BuildBetter/Bob"]);
+  const workingBob = makeWorkspace("working-bob", "running", ["BuildBetter/Bob"]);
+  const plain = makeWorkspace("plain", "needs_input");
+  input.workspaceEntriesByKey = new Map(
+    [needsBob, workingBob, plain].map(({ entry }) => [entry.workspaceKey, entry]),
+  );
+  const projection = buildSidebarProjection(input);
+  expect(projection.workspaceGroups.map((group) => group.key)).toEqual(["needs_input", "running"]);
+  const needs = projection.workspaceGroups[0]!;
+  expect(needs.rows).toEqual([]);
+  expect(needs.children?.map((group) => group.key)).toEqual([
+    "needs_input:label:buildbetter",
+    "needs_input:label:",
+  ]);
+  expect(needs.children?.[0]?.children?.[0]?.rows[0]?.workspaceId).toBe("needs-bob");
+  input.collapsedWorkspaceGroupKeys.add("needs_input:label:buildbetter");
+  expect(
+    buildSidebarProjection(input).shortcutModel.shortcutTargets.map((target) => target.workspaceId),
+  ).toEqual(["plain", "working-bob"]);
+  input.collapsedWorkspaceGroupKeys.add("needs_input");
+  expect(
+    buildSidebarProjection(input).shortcutModel.shortcutTargets.map((target) => target.workspaceId),
+  ).toEqual(["working-bob"]);
 });

@@ -3,7 +3,11 @@ import { gotoAppShell } from "../support/helpers/app";
 import { getServerId } from "../support/helpers/server-id";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
-import { openWorkspaceSidebarKebab } from "../support/helpers/sidebar";
+import {
+  openWorkspaceSidebarKebab,
+  openSidebarDisplayPage,
+  closeSidebarDisplayPreferences,
+} from "../support/helpers/sidebar";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 
 interface SessionEnvelope {
@@ -141,6 +145,58 @@ async function createLabel(
 
 test.describe("Workspace labels", () => {
   test.describe.configure({ timeout: 180_000 });
+
+  test("groups workspaces into collapsible theme buckets and persists the selection", async ({
+    page,
+  }, testInfo) => {
+    const backend = await seedWorkspace({ repoPrefix: "theme-backend-", title: "Backend chat" });
+    const frontend = await seedWorkspace({ repoPrefix: "theme-frontend-", title: "Frontend chat" });
+    try {
+      await backend.client.setWorkspaceLabel({
+        workspaceId: backend.workspaceId,
+        label: { name: "BuildBetter/Backend", color: "red" },
+        assigned: true,
+      });
+      await frontend.client.setWorkspaceLabel({
+        workspaceId: frontend.workspaceId,
+        label: { name: "BuildBetter/AI Chat", color: "red" },
+        assigned: true,
+      });
+      await gotoAppShell(page);
+      await openSidebarDisplayPage(page, "sidebar-display-grouping");
+      await page.getByTestId("sidebar-grouping-label").click();
+      await closeSidebarDisplayPreferences(page);
+      const themeHeader = page.getByTestId("sidebar-status-group-label:buildbetter");
+      await expect(themeHeader).toContainText("BuildBetter");
+      const backendHeader = page.getByTestId("sidebar-status-group-label:buildbetter/backend");
+      const frontendHeader = page.getByTestId("sidebar-status-group-label:buildbetter/ai chat");
+      const backendRows = page.getByTestId("sidebar-status-group-rows-label:buildbetter/backend");
+      await expect(backendHeader).toContainText("Backend");
+      await expect(frontendHeader).toContainText("AI Chat");
+      await expect(backendRows).toContainText("Backend chat");
+      await expect(
+        page.getByTestId("sidebar-status-group-rows-label:buildbetter/ai chat"),
+      ).toContainText("Frontend chat");
+      await backendHeader.click();
+      await expect(backendRows).toHaveCount(0);
+      await expect(frontendHeader).toBeVisible();
+      await page.reload();
+      await expect(backendHeader).toBeVisible({ timeout: 30_000 });
+      await expect(backendRows).toHaveCount(0);
+      await backendHeader.click();
+      await expect(backendRows).toContainText("Backend chat");
+      await themeHeader.click();
+      await expect(backendHeader).toHaveCount(0);
+      await expect(frontendHeader).toHaveCount(0);
+      await themeHeader.click();
+      await expect(backendHeader).toBeVisible();
+      await expect(frontendHeader).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath("theme-grouping.png") });
+    } finally {
+      await frontend.cleanup();
+      await backend.cleanup();
+    }
+  });
 
   test("keeps label filters reachable when no workspaces match", async ({ page }) => {
     const seeded = await seedWorkspace({ repoPrefix: "workspace-labels-no-matches-" });

@@ -173,6 +173,8 @@ closing agents; an abrupt crash can lose queued prompts. A durable send receipt 
 acknowledgment, so a lost window never becomes a completed receipt. Completion waits cover queued
 admission within their original timeout and cancellation scope, and return at permission
 checkpoints and when a Stop holds the queue.
+The mobile composer queue is also stored per host on the device, so it survives reopening the app but
+does not sync between devices.
 
 Finish notification intent has a separate daemon-owned lifetime. The finish-subscriptions module
 persists caller, child, host, and ownership policy through an injectable store; its JSON adapter uses

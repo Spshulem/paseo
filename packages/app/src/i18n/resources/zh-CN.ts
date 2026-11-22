@@ -92,6 +92,16 @@ export const zhCN: TranslationResources = {
     commandCenter: {
       placeholder: "搜索工作区、文件和操作...",
       placeholderWithoutFiles: "搜索工作区和操作...",
+      quick: "快速",
+      deep: "深入",
+      deepPlaceholder: "搜索对话消息…",
+      searchingConversations: "正在搜索对话…",
+      deepDescription: "搜索聊天标题和每个聊天最近最多60条消息。",
+      includeArchived: "包括已归档的聊天",
+      deepUnavailable: "此主机不支持对话搜索。",
+      deepTooLong: "请输入不超过300个字符。",
+      deepCoverage: "已索引 {{indexed}}/{{total}} 个聊天 · {{unavailable}} 个仅标题",
+      deepIndexing: "正在索引 {{indexed}}/{{total}} 个聊天 · {{unavailable}} 个仅标题",
       filePlaceholder: "搜索文件...",
       workspacePlaceholder: "搜索工作区...",
       actionPlaceholder: "搜索操作...",
@@ -1222,6 +1232,7 @@ export const zhCN: TranslationResources = {
         updateHost: "请更新主机以排序工作区",
       },
       grouping: {
+        statusThemes: "状态 → 标签",
         label: "分组",
         project: "项目",
         status: "状态",
@@ -1262,6 +1273,11 @@ export const zhCN: TranslationResources = {
       title: "没有匹配的工作区",
       description: "更改或清除侧边栏筛选以查看工作区。",
       clear: "清除筛选",
+    },
+    recents: {
+      title: "最近聊天",
+      empty: "发送消息后，聊天会显示在这里。",
+      untitled: "无标题聊天",
     },
     pinned: {
       title: "已置顶",
