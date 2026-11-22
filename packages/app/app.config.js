@@ -124,7 +124,9 @@ export default {
       ...(variant.googleServiceInfoPlist
         ? { googleServicesFile: variant.googleServiceInfoPlist }
         : {}),
-      buildNumber: appVariant === "groups" ? "16001001" : nativeReleaseVersion.iosBuildNumber,
+      // Groups uses the same collision-free native version sequence as the main app so each
+      // fork build can update the installed Groups binary.
+      buildNumber: nativeReleaseVersion.iosBuildNumber,
     },
     android: {
       adaptiveIcon: {

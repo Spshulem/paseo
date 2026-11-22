@@ -26,6 +26,13 @@
         "gradleCommand": ":app:bundleRelease -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease -x generateReleaseLintModel -x generateReleaseLintVitalModel"
       }
     },
+    "groups": {
+      "extends": "production",
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANT": "groups"
+      }
+    },
     "production-apk": {
       "extends": "production",
       "distribution": "internal",

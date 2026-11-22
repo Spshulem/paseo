@@ -4,10 +4,13 @@ import { afterEach, describe, expect, it } from "vitest";
 // Load the copies the Expo CLI uses for prebuild, not older hoisted ones.
 const requireFromExpo = createRequire(require.resolve("expo/package.json"));
 const requireFromExpoCli = createRequire(requireFromExpo.resolve("@expo/cli/package.json"));
+const requireFromApp = createRequire(__filename);
 const { getPrebuildConfigAsync } = requireFromExpoCli("@expo/prebuild-config");
 const { compileModsAsync } = requireFromExpoCli(
   "@expo/config-plugins/build/plugins/mod-compiler.js",
 );
+const { getNativeReleaseVersion } = requireFromApp("./native-release-version.js");
+const appPackage = requireFromApp("./package.json");
 
 interface ManifestEntry {
   $: Record<string, string>;
@@ -34,7 +37,7 @@ it("preserves the private Groups identity and local network permission", async (
     expect(exp.name).toBe("Paseo Groups");
     expect(exp.scheme).toBe("paseo-groups");
     expect(exp.ios.bundleIdentifier).toBe("app.buildbetter.paseogroups");
-    expect(exp.ios.buildNumber).toBe("16001001");
+    expect(exp.ios.buildNumber).toBe(getNativeReleaseVersion(appPackage.version).iosBuildNumber);
     expect(exp.ios.infoPlist.NSLocalNetworkUsageDescription).toContain("Tailscale");
     expect(exp.ios.infoPlist.NSLocalNetworkUsageDescription).not.toBe(
       "Allow $(PRODUCT_NAME) to find and connect to devices on your local network.",
