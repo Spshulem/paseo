@@ -155,6 +155,33 @@ describe("workspace navigation", () => {
     ]);
   });
 
+  it("opens the exact non-default agent requested from a status row", () => {
+    const workspace = {
+      id: "workspace-a",
+      workspaceDirectory: "/repo/workspace-a",
+    } as WorkspaceDescriptor;
+    const { deps, openedTabs } = createFakeDeps({
+      getSessionWorkspaces: () => new Map([[workspace.id, workspace]]),
+    });
+
+    navigateToWorkspace(
+      {
+        serverId: "server-1",
+        workspaceId: "workspace-a",
+        target: { kind: "agent", agentId: "non-default-agent" },
+      },
+      deps,
+    );
+
+    expect(openedTabs).toEqual([
+      {
+        workspaceKey: "server-1:workspace-a",
+        target: { kind: "agent", agentId: "non-default-agent" },
+        pin: false,
+      },
+    ]);
+  });
+
   it("carries a request for a tab through a deferred open", () => {
     const { deps, deferredTabs } = createFakeDeps({ getSessionWorkspaces: () => new Map() });
 

@@ -19,6 +19,7 @@ import { clickNewChat } from "../support/helpers/launcher";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { seedWorkspace } from "../support/helpers/seed-client";
+import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
 import {
   getVisibleWorkspaceAgentTabIds,
   expectOnlyWorkspaceAgentTabsVisible,
@@ -428,6 +429,47 @@ test.describe("Workspace navigation regression", () => {
     } finally {
       await secondWorkspace.cleanup();
       await firstWorkspace.cleanup();
+    }
+  });
+
+  test("status rows open the latest exact agent when a workspace has multiple conversations", async ({
+    page,
+  }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "workspace-status-agent-target-" });
+
+    try {
+      const defaultAgent = await createMockIdleAgent(workspace.client, {
+        cwd: workspace.repoPath,
+        workspaceId: workspace.workspaceId,
+        title: "Default conversation",
+      });
+      const nonDefaultAgent = await createMockIdleAgent(workspace.client, {
+        cwd: workspace.repoPath,
+        workspaceId: workspace.workspaceId,
+        title: "Needs review conversation",
+      });
+      await workspace.client.sendAgentMessage(nonDefaultAgent.id, "mark the newer conversation");
+      await workspace.client.waitForFinish(nonDefaultAgent.id, 30_000);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await selectSidebarStatusGrouping(page);
+
+      const row = page
+        .getByTestId("sidebar-status-group-rows-attention")
+        .getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      await row.click();
+
+      await expect(page).toHaveURL(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId), {
+        timeout: 30_000,
+      });
+      await waitForWorkspaceTabsVisible(page);
+      await expectWorkspaceTabVisible(page, nonDefaultAgent.id);
+      await expectWorkspaceTabHidden(page, defaultAgent.id);
+      await expectOnlyWorkspaceAgentTabsVisible(page, [nonDefaultAgent.id]);
+    } finally {
+      await workspace.cleanup();
     }
   });
 
