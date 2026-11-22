@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.0-beta.1 - 2026-11-22
+
+- Added theme grouping, Recents, and conversation search that work with upstream Paseo clients.
+- Queued composer messages now persist across app restarts, and mobile chats have a Back action.
+- Added a Groups iOS release profile with collision-free build numbers and update-continuity checks.
+
 ## 0.17.3 - 2026-11-22
 
 ### Fixed
