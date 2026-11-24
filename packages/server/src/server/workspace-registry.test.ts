@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 
 import { beforeEach, afterEach, describe, expect, test } from "vitest";
 
@@ -80,6 +80,23 @@ describe("workspace registries", () => {
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("refuses writes after a malformed registry read so its records remain recoverable", async () => {
+    const original = createPersistedProjectRecord({
+      projectId: "repo",
+      rootPath: "/repo",
+      kind: "git",
+      displayName: "Repo",
+      createdAt: "2026-11-13T00:00:00Z",
+      updatedAt: "2026-11-13T00:00:00Z",
+    });
+    const file = path.join(tmpDir, "projects", "projects.json");
+    await writeJsonFileAtomic(file, [original, { projectId: "unreadable" }]);
+    const before = readFileSync(file, "utf8");
+    await projectRegistry.initialize();
+    await expect(projectRegistry.upsert(original)).rejects.toThrow("mutations are blocked");
+    expect(readFileSync(file, "utf8")).toBe(before);
   });
 
   test("creates, updates, archives, deletes, and lists project records", async () => {

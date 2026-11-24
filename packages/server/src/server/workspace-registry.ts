@@ -299,6 +299,8 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") {
+        // Never replace an unreadable registry with an empty cache on the next write.
+        this.mutationsBlockedUntilRestart = true;
         this.logger.error({ err: error, filePath: this.filePath }, "Failed to load registry file");
       }
     }
