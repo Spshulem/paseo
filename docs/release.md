@@ -414,6 +414,57 @@ macOS 13 maps to Darwin 22. The two values use different version domains; do not
 - **Bootstrap caveat.** Clients running a build older than the rollout feature ignore `rolloutHours` and admit immediately. Rollout protection only applies to clients running the rollout-aware version or later.
 - **Up to ~30 min automatic admission latency.** Renderer polls every 30 minutes, so a stable user may take up to that long to be evaluated against the rollout window. Clicking **Check** is manual and bypasses rollout admission.
 
+## Private Groups iOS updates
+
+This fork's Groups app is separate from the official Paseo store app. Keep
+`APP_VARIANT=groups`, bundle `app.buildbetter.paseogroups`, scheme `paseo-groups`,
+and Build Better signing team `3AVR8P72M4`. Personal signing teams and `sh.paseo`
+are not replacements for an in-place Groups update.
+
+The working build `16000003` was signed by Xcode 27.2 (`27B52`) with application
+identifier `3AVR8P72M4.app.buildbetter.paseogroups`. Its signed entitlements have
+no explicit `keychain-access-groups`; the app's default group applies. An earlier
+manual signing pass copied wildcard groups from the provisioning profile. Do not
+copy a profile's full entitlements into an app or treat that older manually signed
+bundle as the working baseline. Keep the successful Xcode-signed `.app` privately
+as the update baseline.
+
+Host profiles and their authentication fields currently persist in native
+AsyncStorage under `@paseo:daemon-registry`, not Expo SecureStore or a custom
+keychain service. An in-place install must retain the app container as well as its
+signing identity. Do not uninstall, reset app data, rename that storage key, seed
+credentials into a build, or assume every connection problem is keychain loss.
+
+Before the next build, use `/Applications/Xcode.app/Contents/Developer` explicitly
+and require `xcodebuild -version` to report 27.2 or newer. Build the Release Groups
+scheme using `DEVELOPMENT_TEAM=3AVR8P72M4 CODE_SIGN_STYLE=Automatic`; provision each
+intended device with the Build Better account, not the personal account. Keep
+Node's `.xcode.env.local` path local to the build machine. Do not reuse another
+host's Homebrew Cellar path. Preserve the custom Tailscale local-network permission
+text in the final Release `Info.plist`.
+
+Before installing a candidate, run the read-only gate:
+
+```bash
+node scripts/verify-groups-ios-update.mjs "$WORKING_GROUPS_APP" "$CANDIDATE_GROUPS_APP"
+```
+
+The gate checks both signatures and rejects changed container/signing/access-group
+identities, an old SDK, missing phone/tablet support, or lost network permission.
+A passing gate is not proof that either real-device host authenticated.
+
+Install only in place with `xcrun devicectl device install app --device "$DEVICE_UDID" "$CANDIDATE_GROUPS_APP"`.
+Before and after the update, verify both saved hosts:
+BuildBot3 `srv_4x2crHynU7yi` and Mac `srv_6csfaHcKvC-A`. For each host, verify an
+authenticated workspace/history read on launch, after force-close/relaunch, and
+after reconnect. Do not restart either daemon for this check. Record only host
+IDs, build identity and pass/fail, never passwords, pairing offers, or tokens.
+
+If a host is absent or its identity intentionally changed, use the supported
+private pairing/deep-link flow through Add host, with user-authorized private
+credentials. Preserve the other host; do not clear the registry. Until both
+hosts pass the real-device matrix, report connection retention as unverified.
+
 ## Mobile builds (EAS)
 
 iOS and Android store builds are not in `.github/workflows`. They are triggered by the EAS GitHub app the moment the `v*` tag is pushed:

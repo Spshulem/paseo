@@ -93,6 +93,16 @@ export const ptBR: TranslationResources = {
     commandCenter: {
       placeholder: "Pesquisar espaços de trabalho, arquivos e ações...",
       placeholderWithoutFiles: "Pesquisar espaços de trabalho e ações...",
+      quick: "Rápida",
+      deep: "Profunda",
+      deepPlaceholder: "Buscar mensagens de conversas…",
+      searchingConversations: "Buscando conversas…",
+      deepDescription: "Busca títulos e até 60 mensagens recentes por chat.",
+      includeArchived: "Incluir chats arquivados",
+      deepUnavailable: "A busca de conversas não está disponível neste host.",
+      deepTooLong: "Use no máximo 300 caracteres.",
+      deepCoverage: "{{indexed}}/{{total}} chats indexados · {{unavailable}} apenas título",
+      deepIndexing: "Indexando {{indexed}}/{{total}} chats · {{unavailable}} apenas título",
       filePlaceholder: "Pesquisar arquivos...",
       workspacePlaceholder: "Pesquisar espaços de trabalho...",
       actionPlaceholder: "Pesquisar ações...",
@@ -1258,6 +1268,7 @@ export const ptBR: TranslationResources = {
         updateHost: "Atualize os hosts para ordenar os espaços de trabalho",
       },
       grouping: {
+        statusThemes: "Status → Etiquetas",
         label: "Agrupamento",
         project: "Projeto",
         status: "Status",
@@ -1298,6 +1309,11 @@ export const ptBR: TranslationResources = {
       title: "Nenhum espaço de trabalho corresponde",
       description: "Altere ou limpe os filtros da barra lateral para ver espaços de trabalho.",
       clear: "Limpar filtros",
+    },
+    recents: {
+      title: "Recentes",
+      empty: "As conversas aparecem aqui depois que você envia uma mensagem.",
+      untitled: "Conversa sem título",
     },
     pinned: {
       title: "Fixados",

@@ -19,6 +19,7 @@ interface CompactWorkspaceHeaderProps {
   subtitle: string;
   isSubtitleDistinct: boolean;
   explorerAction: ReactNode;
+  onChatBack?: () => void;
   tabSwitcher: ReactNode;
   inDesktopTitlebar: boolean;
   /** Workspace overflow menu. */
@@ -35,6 +36,7 @@ export function CompactWorkspaceHeader({
   subtitle,
   isSubtitleDistinct,
   explorerAction,
+  onChatBack,
   children,
   tabSwitcher,
   inDesktopTitlebar,
@@ -73,6 +75,7 @@ export function CompactWorkspaceHeader({
           titleTestID="workspace-header-title"
           subtitle={projectRow}
           loading={isLoading}
+          onChatBack={onChatBack}
           actions={actionsInBar ? undefined : actions}
         />
       ) : null}

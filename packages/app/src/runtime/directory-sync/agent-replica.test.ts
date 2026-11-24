@@ -210,6 +210,9 @@ describe("AgentDirectoryReplica", () => {
       () => undefined,
     );
     replica.commitSnapshot([entry(payload("agent"))], []);
+    // An idle agent in a snapshot drains a composer queue restored while the app was closed.
+    expect(stopped).toEqual(["agent"]);
+    stopped.length = 0;
     replica.applyTurnLiveness("agent", {
       type: "stream_open",
       turn: { turnId: "turn-1", startedAt: null },

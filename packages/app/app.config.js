@@ -69,6 +69,10 @@ function resolveSecretFile(params) {
 }
 
 const variants = {
+  groups: {
+    name: "Paseo Groups",
+    packageId: "app.buildbetter.paseogroups",
+  },
   production: {
     name: "Paseo",
     packageId: "sh.paseo",
@@ -105,7 +109,7 @@ export default {
     version: nativeReleaseVersion.appVersion,
     orientation: "default",
     icon: "./assets/images/icon.png",
-    scheme: "paseo",
+    scheme: appVariant === "groups" ? "paseo-groups" : "paseo",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     ios: {
@@ -113,11 +117,15 @@ export default {
       infoPlist: {
         NSMicrophoneUsageDescription: "This app needs access to the microphone for voice commands.",
         ITSAppUsesNonExemptEncryption: false,
+        NSLocalNetworkUsageDescription:
+          "Paseo connects to your Paseo daemons over your local network, VPN, or Tailscale.",
       },
       bundleIdentifier: variant.packageId,
       ...(variant.googleServiceInfoPlist
         ? { googleServicesFile: variant.googleServiceInfoPlist }
         : {}),
+      // Groups uses the same collision-free native version sequence as the main app so each
+      // fork build can update the installed Groups binary.
       buildNumber: nativeReleaseVersion.iosBuildNumber,
     },
     android: {

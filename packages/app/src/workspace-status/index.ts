@@ -7,6 +7,8 @@ import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 interface EffectiveWorkspaceStatus {
   status: WorkspaceDescriptor["status"];
   enteredAt: Date | null;
+  /** Latest root conversation in this workspace, when the activity index is hydrated. */
+  agentId?: string;
 }
 
 export function deriveEffectiveWorkspaceStatus(input: {
@@ -15,8 +17,14 @@ export function deriveEffectiveWorkspaceStatus(input: {
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
   workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
 }): EffectiveWorkspaceStatus {
+  const rootAgentActivity = input.workspaceAgentActivity?.get(input.workspace.id);
+
   if (input.workspace.status !== "done") {
-    return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
+    return {
+      status: input.workspace.status,
+      enteredAt: input.workspace.statusEnteredAt,
+      ...(rootAgentActivity ? { agentId: rootAgentActivity.agentId } : {}),
+    };
   }
 
   const pendingStartedAt = getPendingInitialAgentCreateStartedAt({
@@ -28,12 +36,15 @@ export function deriveEffectiveWorkspaceStatus(input: {
     return { status: "running", enteredAt: pendingStartedAt };
   }
 
-  const rootAgentActivity = input.workspaceAgentActivity?.get(input.workspace.id);
   if (rootAgentActivity && rootAgentActivity.status !== "done") {
     return rootAgentActivity;
   }
 
-  return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
+  return {
+    status: input.workspace.status,
+    enteredAt: input.workspace.statusEnteredAt,
+    ...(rootAgentActivity ? { agentId: rootAgentActivity.agentId } : {}),
+  };
 }
 
 function getPendingInitialAgentCreateStartedAt(input: {

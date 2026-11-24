@@ -49,6 +49,8 @@ import type { Theme } from "@/styles/theme";
 import invariant from "tiny-invariant";
 import { SidebarMenuToggle } from "@/components/headers/sidebar-menu-toggle";
 import { ScreenHeader } from "@/components/headers/screen-header";
+import { BackButton } from "@/components/headers/compact-header";
+import { useChatBack } from "@/navigation/use-chat-back";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { FloatingHeaderLayout } from "@/components/floating-header";
 import { StreamTopOverlayProvider, supportsStreamTopOverlay } from "@/agent-stream/top-overlay";
@@ -1047,6 +1049,7 @@ function WorkspaceScreenContent({
     resolveWorkspaceActionPlacement(useWindowLayout()) === "vertical-bar";
   const toast = useToast();
   const isMobile = useIsCompactFormFactor();
+  const workspacePanelActive = usePanelStore((state) => state.mobilePanel.target === "agent");
   const canRenderDesktopPaneSplits = supportsDesktopPaneSplits();
   const layoutMode = useWorkspaceLayoutStore((state) => state.layoutMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
@@ -1475,6 +1478,15 @@ function WorkspaceScreenContent({
     }
     return target.terminalId;
   }, [focusedPaneTabState.activeTab]);
+
+  const onChatBack = useChatBack({
+    serverId: normalizedServerId,
+    workspaceId: normalizedWorkspaceId,
+    agentId: focusedPaneAgentId,
+    isRouteFocused,
+    isMobile,
+    workspacePanelActive,
+  });
 
   useEffect(() => {
     if (!isRouteFocused) {
@@ -3298,6 +3310,7 @@ function WorkspaceScreenContent({
           left={
             <>
               <SidebarMenuToggle />
+              {onChatBack ? <BackButton onBack={onChatBack} testID="workspace-chat-back" /> : null}
               <WorkspaceHeaderTitleBar
                 isLoading={isWorkspaceHeaderLoading}
                 title={workspaceHeaderTitle}
@@ -3327,6 +3340,7 @@ function WorkspaceScreenContent({
       headerRight,
       isWorkspaceHeaderLoading,
       normalizedServerId,
+      onChatBack,
       openImportSheet,
       showScreenHeader,
       showWorkspaceSetup,
@@ -3416,6 +3430,7 @@ function WorkspaceScreenContent({
           subtitle={workspaceHeaderSubtitle}
           isSubtitleDistinct={isWorkspaceHeaderSubtitleDistinct}
           serverId={normalizedServerId}
+          onChatBack={onChatBack}
         >
           <WorkspaceHeaderMenuMobile
             pane={paneTabs?.actions.pane}
@@ -3460,6 +3475,7 @@ function WorkspaceScreenContent({
       isWorkspaceHeaderSubtitleDistinct,
       normalizedServerId,
       normalizedWorkspaceId,
+      onChatBack,
       openImportSheet,
       showCreateBrowserTab,
       showWorkspaceSetup,

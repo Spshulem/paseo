@@ -62,6 +62,7 @@ export function buildSidebarShortcutSections(input: {
 }): SidebarShortcutModel {
   const maxShortcuts = Math.max(0, Math.floor(input.shortcutLimit ?? 9));
   const shortcutTargets: SidebarShortcutWorkspaceTarget[] = [];
+  const seenWorkspaceKeys = new Set<string>();
   const shortcutIndexByWorkspaceKey = new Map<string, number>();
 
   for (const section of input.sections) {
@@ -70,6 +71,8 @@ export function buildSidebarShortcutSections(input: {
     }
 
     for (const workspace of section.workspaces) {
+      if (seenWorkspaceKeys.has(workspace.workspaceKey)) continue;
+      seenWorkspaceKeys.add(workspace.workspaceKey);
       shortcutTargets.push(createShortcutTarget(workspace));
       if (shortcutTargets.length <= maxShortcuts) {
         shortcutIndexByWorkspaceKey.set(workspace.workspaceKey, shortcutTargets.length);

@@ -184,9 +184,25 @@ const test = daemonTest.extend<{
           localStorage.removeItem("@paseo:settings");
           localStorage.setItem("@paseo:create-agent-preferences", JSON.stringify(preferences));
           // New installs collapse finished turns; specs assert on the rows inside them, so they
-          // start from the full chat unless they seed their own settings.
+          // start from the full chat unless they seed their own settings. This build defaults
+          // Default send to Queue; specs are written against Steer and opt into Queue with
+          // `configureComposerQueueSend`.
           if (!localStorage.getItem("@paseo:app-settings")) {
-            localStorage.setItem("@paseo:app-settings", JSON.stringify({ chatDisplay: "full" }));
+            localStorage.setItem(
+              "@paseo:app-settings",
+              JSON.stringify({ chatDisplay: "full", sendBehavior: "steer" }),
+            );
+          }
+          // Recents lists the same chats as their tabs and sits above the workspace list; specs
+          // written before it start with it collapsed so names and row positions stay unique.
+          if (!localStorage.getItem("sidebar-collapsed-sections")) {
+            localStorage.setItem(
+              "sidebar-collapsed-sections",
+              JSON.stringify({
+                state: { collapsedWorkspaceGroupKeys: ["sidebar:recents"] },
+                version: 0,
+              }),
+            );
           }
           // The shared daemon often has no projects, which would open first-run setup over the app.
           if (onboardingCompleted && !localStorage.getItem("@paseo:onboarding")) {

@@ -146,8 +146,11 @@ export class AgentDirectoryReplica {
     this.pendingCacheReads.clear();
     for (const agentId of nextIds) this.members.add(agentId);
     const agents = this.storeProjection.replaceFetched(reconciled);
-    for (const [agentId, previousAgent] of previous) {
-      if (previousAgent.turn.phase === "open" && agents.get(agentId)?.turn.phase === "idle") {
+    for (const [agentId, agent] of agents) {
+      if (agent.turn.phase !== "idle" || agent.archivedAt || agent.pendingPermissions.length)
+        continue;
+      // A restored composer queue may have missed the turn ending while the app was closed.
+      if (previous.get(agentId)?.turn.phase === "open" || agent.status === "idle") {
         this.onStoppedRunning(agentId);
       }
     }

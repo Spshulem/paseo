@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { AttachmentMetadata, WorkspaceFileComposerAttachment } from "@/attachments/types";
+import type {
+  AttachmentMetadata,
+  ComposerAttachment,
+  WorkspaceFileComposerAttachment,
+} from "@/attachments/types";
 import { appendWorkspaceFileAttachment } from "@/attachments/workspace-file";
 import {
   garbageCollectAttachments,
@@ -12,6 +16,7 @@ import { collectRetainedAttachmentIds } from "@/attachments/gc-retention";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore, type SessionState } from "@/stores/session-store";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
+import { readPersistedQueuedMessageAttachments } from "@/runtime/queued-message-storage";
 import {
   applyClearDraftRecord,
   editDraftRecordText,
@@ -204,6 +209,10 @@ async function runAttachmentGc(): Promise<void> {
   }
 
   try {
+    // GC can run before the host runtime restores a queue into the session store.
+    for (const attachment of await readPersistedQueuedMessageAttachments(AsyncStorage)) {
+      retainQueuedAttachment(attachment, referencedIds);
+    }
     await garbageCollectAttachments({ referencedIds });
   } catch (error) {
     console.warn("[DraftStore] Attachment garbage collection failed", error);
@@ -217,11 +226,17 @@ function collectQueuedMessageAttachmentIds(
   for (const queue of session.queuedMessages.values()) {
     for (const queuedMessage of queue) {
       for (const attachment of queuedMessage.attachments) {
-        if (attachment.kind === "image") {
-          referencedIds.add(attachment.metadata.id);
-        }
+        retainQueuedAttachment(attachment, referencedIds);
       }
     }
+  }
+}
+
+function retainQueuedAttachment(attachment: ComposerAttachment, referencedIds: Set<string>): void {
+  if (attachment.kind === "image") {
+    referencedIds.add(attachment.metadata.id);
+  } else if (attachment.kind === "browser_element" && attachment.attachment.screenshot) {
+    referencedIds.add(attachment.attachment.screenshot.id);
   }
 }
 

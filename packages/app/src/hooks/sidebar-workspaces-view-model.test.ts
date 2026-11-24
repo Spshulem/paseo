@@ -71,6 +71,45 @@ describe("createSidebarWorkspaceEntry forge threading", () => {
   });
 });
 
+describe("createSidebarWorkspaceEntry conversation identity", () => {
+  it("retains the newest root conversation when several agents share a done workspace", () => {
+    const descriptor = workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42");
+    const activity = buildWorkspaceAgentActivityIndex(
+      new Map([
+        [
+          "default-agent",
+          agent({
+            id: "default-agent",
+            workspaceId: descriptor.id,
+            status: "idle",
+            updatedAt: new Date("2026-11-22T10:00:00.000Z"),
+          }),
+        ],
+        [
+          "non-default-agent",
+          agent({
+            id: "non-default-agent",
+            workspaceId: descriptor.id,
+            status: "idle",
+            updatedAt: new Date("2026-11-22T10:01:00.000Z"),
+          }),
+        ],
+      ]),
+    );
+
+    const entry = createSidebarWorkspaceEntry({
+      serverId: "srv",
+      workspace: descriptor,
+      workspaceAgentActivity: activity,
+    });
+
+    expect(entry).toMatchObject({
+      statusBucket: "done",
+      agentId: "non-default-agent",
+    });
+  });
+});
+
 describe("createSidebarWorkspaceEntry workspace directory label", () => {
   it("uses the daemon-provided slug for a Paseo-owned worktree", () => {
     const descriptor = workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42");
