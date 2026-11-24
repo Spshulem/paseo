@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.18.0-beta.2 - 2026-11-24
+
+### Added
+
+- Added switching an existing chat to a different provider (Claude, Codex or Antigravity) from the model picker. The chat keeps its tab and worktree, and the new provider receives excerpts of the conversation it missed.
+
+### Changed
+
+- Updated to upstream Paseo 0.17.4.
+
+### Fixed
+
+- Fixed New workspace forgetting the selected host and project after a reload, and retries creating the workspace in the previously selected project.
+- Fixed an unreadable workspace or project registry file being replaced with an empty one on the next change.
+- Fixed idle cleanup keeping an idle parent chat loaded for another hour after collecting its idle subagents.
+
 ## 0.18.0-beta.1 - 2026-11-22
 
 ### Added
