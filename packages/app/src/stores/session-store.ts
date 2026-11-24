@@ -1,4 +1,5 @@
 import equal from "fast-deep-equal";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -22,7 +23,8 @@ import {
   type MessageSubmissionRejectionOutcome,
 } from "@/composer/submission/model";
 import type { PendingPermission } from "@/types/shared";
-import type { ComposerAttachment } from "@/attachments/types";
+import type { QueuedComposerMessage } from "@/composer/actions";
+import { writeQueuedMessages } from "@/runtime/queued-message-storage";
 import type { AgentLifecycleStatus } from "@getpaseo/protocol/agent-lifecycle";
 import type {
   AgentPermissionRequest,
@@ -516,10 +518,7 @@ export interface SessionState {
   fileExplorer: Map<string, AgentFileExplorerState>;
 
   // Queued messages
-  queuedMessages: Map<
-    string,
-    Array<{ id: string; text: string; attachments: ComposerAttachment[] }>
-  >;
+  queuedMessages: Map<string, QueuedComposerMessage[]>;
 }
 
 // Global store state
@@ -700,10 +699,8 @@ interface SessionStoreActions {
   setQueuedMessages: (
     serverId: string,
     value:
-      | Map<string, Array<{ id: string; text: string; attachments: ComposerAttachment[] }>>
-      | ((
-          prev: Map<string, Array<{ id: string; text: string; attachments: ComposerAttachment[] }>>,
-        ) => Map<string, Array<{ id: string; text: string; attachments: ComposerAttachment[] }>>),
+      | Map<string, QueuedComposerMessage[]>
+      | ((prev: Map<string, QueuedComposerMessage[]>) => Map<string, QueuedComposerMessage[]>),
   ) => void;
 
   // Hydration
@@ -1927,6 +1924,12 @@ export const useSessionStore = create<SessionStore>()(
             },
           };
         });
+        const queuedMessages = get().sessions[serverId]?.queuedMessages;
+        if (queuedMessages) {
+          void writeQueuedMessages(AsyncStorage, serverId, queuedMessages).catch((error) => {
+            console.warn("[SessionStore] Failed to persist queued messages", error);
+          });
+        }
       },
 
       // Hydration

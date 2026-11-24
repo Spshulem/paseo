@@ -1553,7 +1553,7 @@ describe("WorkspaceGitServiceImpl", () => {
     service.dispose();
   });
 
-  test("watches nested repository changes through one recursive checkout subscription", async () => {
+  test("scopes nested repository working-tree observation to its workspace directory", async () => {
     const unsubscribe = vi.fn(async () => {});
     const updateIgnore = vi.fn(async () => {});
     const subscribe = vi.fn(async () => ({
@@ -1569,9 +1569,13 @@ describe("WorkspaceGitServiceImpl", () => {
 
     expect(subscription.repoRoot).toBe(REPO_CWD);
     expect(subscribe).toHaveBeenCalledTimes(1);
-    expect(subscribe).toHaveBeenCalledWith(REPO_CWD, expect.any(Function), {
-      ignore: [join(REPO_CWD, ".git")],
-    });
+    expect(subscribe).toHaveBeenCalledWith(
+      path.join(REPO_CWD, "packages", "server"),
+      expect.any(Function),
+      {
+        ignore: [join(REPO_CWD, "packages", "server", ".git")],
+      },
+    );
 
     subscription.unsubscribe();
     expect(unsubscribe).toHaveBeenCalledTimes(1);

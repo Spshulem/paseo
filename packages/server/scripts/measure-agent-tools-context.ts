@@ -36,6 +36,7 @@ interface ToolSize {
 interface CatalogMeasurement {
   label: string;
   browserToolsEnabled: boolean;
+  lazyToolLoading: boolean;
   toolCount: number;
   bytes: number;
   estimatedTokens: number;
@@ -177,6 +178,7 @@ function sumFieldSizes(tools: ToolSize[]): FieldSize[] {
 async function measureCatalog(params: {
   label: string;
   browserToolsEnabled: boolean;
+  lazyToolLoading: boolean;
   scope: CatalogScope;
 }): Promise<CatalogMeasurement> {
   const server = await createAgentMcpServer({
@@ -187,6 +189,7 @@ async function measureCatalog(params: {
     browserToolsEnabled: params.browserToolsEnabled,
     browserToolsBroker: new MeasurementBrowserToolsBroker() as unknown as BrowserToolsBroker,
     callerAgentId: params.scope === "agent" ? MEASUREMENT_AGENT_ID : undefined,
+    lazyToolLoading: params.lazyToolLoading,
     logger: pino({ level: "silent" }),
   });
   const client = new Client({ name: "paseo-agent-tools-measurement", version: "0.0.0" });
@@ -202,6 +205,7 @@ async function measureCatalog(params: {
     return {
       label: params.label,
       browserToolsEnabled: params.browserToolsEnabled,
+      lazyToolLoading: params.lazyToolLoading,
       toolCount: result.tools.length,
       ...size,
       withoutOutputSchemas: {
@@ -311,6 +315,10 @@ class MeasurementAgentManager {
   public listAgents(): ManagedAgent[] {
     return [];
   }
+
+  public getPluginTools(): [] {
+    return [];
+  }
 }
 
 class MeasurementAgentStorage {
@@ -359,13 +367,21 @@ async function main(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
   const measurements = await Promise.all([
     measureCatalog({
-      label: "Core tools",
+      label: "Full core catalog",
       browserToolsEnabled: false,
+      lazyToolLoading: false,
       scope: options.scope,
     }),
     measureCatalog({
-      label: "Core + browser tools",
+      label: "Full core + browser catalog",
       browserToolsEnabled: true,
+      lazyToolLoading: false,
+      scope: options.scope,
+    }),
+    measureCatalog({
+      label: "Lazy discovery surface",
+      browserToolsEnabled: true,
+      lazyToolLoading: true,
       scope: options.scope,
     }),
   ]);

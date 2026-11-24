@@ -5,6 +5,11 @@ description: Paseo reference for managing hosts, projects, workspaces, workspace
 
 Paseo is a remote daemon that manages coding agents, terminals. Control it through MCP tools or the CLI.
 
+Agent-launched sessions may receive Paseo's lazy MCP surface. When a direct tool name from this
+reference is not present in the tool list, call `paseo_tool_search` with the capability you need,
+then call `paseo_tool_call` with the exact returned `name` and its `arguments` object. This keeps
+unused tool schemas out of the context; direct MCP clients still receive the individual tools.
+
 ## Connected hosts
 
 Call `list_hosts` to discover the calling daemon (`self`) and its registered destinations (`hosts`). Use a destination's `serverId` for tool calls; labels are display names.

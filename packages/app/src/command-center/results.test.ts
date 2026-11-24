@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CommandCenterContribution } from "./contributions";
 import { COMMAND_CENTER_LIST_METRICS } from "./list-metrics";
+import { conversationSearchResponse, conversationSearchSection } from "./conversation-search-model";
 import {
   buildContributionSections,
   filterAndRankBuiltInResults,
@@ -11,6 +12,50 @@ import {
   projectCommandCenterRows,
   type CommandCenterWorkspaceResult,
 } from "./results";
+
+describe("deep conversation search", () => {
+  it("keeps matches on different hosts distinct and opens the correct archived chat", () => {
+    const opened: string[] = [];
+    const response = conversationSearchResponse.parse({
+      results: [
+        {
+          agentId: "same-id",
+          title: "CLI",
+          provider: "codex",
+          archived: true,
+          snippet: "needle only in a message",
+          score: 1,
+        },
+      ],
+      total: 1,
+      indexed: 1,
+      unavailable: 0,
+      indexing: false,
+      error: null,
+    });
+    const open = (host: string, id: string) => {
+      opened.push(`${host}/${id}`);
+    };
+    const sections = ["bb3", "mac"].map((serverId) =>
+      conversationSearchSection(serverId, serverId, response, "Archived", open),
+    );
+    const projected = projectCommandCenterRows(sections, COMMAND_CENTER_LIST_METRICS.compact);
+    expect(projected.selectableResults.map((row) => row.id)).toEqual([
+      "conversation:bb3:same-id",
+      "conversation:mac:same-id",
+    ]);
+    projected.selectableResults[1].run();
+    expect(opened).toEqual(["mac/same-id"]);
+    expect(sections[1].results[0]).toMatchObject({
+      contribution: { presentation: { subtitle: "codex · Archived · needle only in a message" } },
+    });
+  });
+  it("rejects malformed search results instead of navigating to an unknown target", () => {
+    expect(
+      conversationSearchResponse.safeParse({ results: [{ title: "missing identity" }] }).success,
+    ).toBe(false);
+  });
+});
 
 function contribution(input: {
   id: string;

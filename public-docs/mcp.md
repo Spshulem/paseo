@@ -19,6 +19,12 @@ category: Orchestration
 
 Depending on the provider, Paseo delivers tools through its native tool interface or MCP. The capabilities are the same. Start a new agent or reload an existing one after changing injection settings.
 
+Provider-launched MCP sessions use lazy tool discovery. They initially receive only
+`paseo_tool_search` and `paseo_tool_call`; search returns the matching tool descriptions and
+input schemas, and the call tool executes the selected, policy-filtered tool. This keeps unused
+schemas out of the provider's initial context while preserving the complete catalog. Direct MCP
+clients that connect without an agent caller keep the individual tool entries.
+
 ## Limit Paseo tools by provider
 
 Use provider policies when different agent profiles should receive different Paseo tools. Enable

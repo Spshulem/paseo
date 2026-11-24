@@ -91,6 +91,18 @@ export const ru: TranslationResources = {
       close: "Закрыть меню",
     },
     commandCenter: {
+      quick: "Быстрый",
+      deep: "Глубокий",
+      deepPlaceholder: "Поиск по сообщениям…",
+      searchingConversations: "Поиск разговоров…",
+      deepDescription: "Поиск по заголовкам и последним 60 сообщениям каждого чата.",
+      includeArchived: "Включать архивные чаты",
+      deepUnavailable: "Поиск разговоров недоступен на этом хосте.",
+      deepTooLong: "Введите не более 300 символов.",
+      deepCoverage:
+        "Проиндексировано {{indexed}}/{{total}} чатов · {{unavailable}} только по заголовку",
+      deepIndexing:
+        "Индексирование {{indexed}}/{{total}} чатов · {{unavailable}} только по заголовку",
       placeholder: "Поиск команд, файлов, рабочих пространств и агентов...",
       filePlaceholder: "Поиск файлов...",
       searchingFiles: "Поиск файлов...",
@@ -1231,6 +1243,7 @@ export const ru: TranslationResources = {
         updateHost: "Обновите хосты для сортировки рабочих пространств",
       },
       grouping: {
+        statusThemes: "Статус → Метки",
         label: "Группировка",
         project: "Проект",
         status: "Статус",
@@ -1272,6 +1285,11 @@ export const ru: TranslationResources = {
       description:
         "Измените или очистите фильтры боковой панели, чтобы увидеть рабочие пространства.",
       clear: "Очистить фильтры",
+    },
+    recents: {
+      title: "Недавние",
+      empty: "Чаты появятся здесь после отправки сообщения.",
+      untitled: "Чат без названия",
     },
     pinned: {
       title: "Закреплённые",

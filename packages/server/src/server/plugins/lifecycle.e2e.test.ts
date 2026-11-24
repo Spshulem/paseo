@@ -1,14 +1,97 @@
 import { execFileSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { resolveDaemonVersion } from "../daemon-version.js";
 import { BuiltinPluginLoader } from "./builtin/index.js";
 import { createPaseoApi } from "@getpaseo/client";
+import { createTestAgentClient } from "../test-utils/fake-agent-client.js";
+import { status as resumeStatus } from "../../../../../plugin-examples/auto-resume/shared/contracts.js";
+
+test("auto-resume plugin waits for a capacity reset and continues the same conversation", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "paseo-resume-e2e-"));
+  const turns: string[] = [];
+  const provider = createTestAgentClient("codex", {
+    onStartTurn(prompt) {
+      turns.push(typeof prompt === "string" ? prompt : JSON.stringify(prompt));
+    },
+  });
+  const daemon = await createTestPaseoDaemon({
+    agentClients: { codex: provider },
+    pluginsEnabled: true,
+  });
+  const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+  try {
+    await client.connect();
+    const home = daemon.paseoHome;
+    vi.stubEnv("PASEO_HOME", home);
+    const configDirectory = path.join(home, "plugin-data", "auto-resume");
+    await mkdir(configDirectory, { recursive: true });
+    await writeFile(
+      path.join(configDirectory, "connection.json"),
+      JSON.stringify({
+        target: `127.0.0.1:${daemon.port}`,
+        serverId: client.getLastServerInfoMessage()!.serverId,
+        sdkRoot: fileURLToPath(new URL("../../../../../", import.meta.url)),
+      }),
+    );
+    const source = fileURLToPath(
+      new URL("../../../../../plugin-examples/auto-resume", import.meta.url),
+    );
+    await cp(source, directory, { recursive: true });
+    await symlink(
+      fileURLToPath(new URL("../../../../../node_modules", import.meta.url)),
+      path.join(directory, "node_modules"),
+      "dir",
+    );
+    await client.installDirectoryPlugin(directory);
+    const agent = await client.createAgent({
+      provider: "codex",
+      cwd: daemon.staticDir,
+      title: "Capacity retry fixture",
+      modeId: "full-access",
+    });
+    await client.sendAgentMessage(
+      agent.id,
+      "Emit a turn failure: Model is at capacity. Retry-After: 1",
+    );
+    const state = async () =>
+      resumeStatus.output.parse(await client.invokePluginRpc("auto-resume", resumeStatus.name, {}));
+    await expect
+      .poll(async () => (await state()).retries[0]?.state, { timeout: 10000 })
+      .toBe("waiting");
+    expect((await state()).retries[0].agentId).toBe(agent.id);
+    expect(turns).toHaveLength(1);
+    await expect
+      .poll(async () => (await state()).retries[0]?.state, { timeout: 45000 })
+      .toBe("completed");
+    expect(turns).toHaveLength(2);
+    expect(turns[1]).toContain("Resume the unfinished work");
+    const timeline = await client.fetchAgentTimeline(agent.id, { direction: "tail", limit: 30 });
+    expect(
+      timeline.entries.some(({ item }) => item.type === "plugin" && item.kind === "resume"),
+    ).toBe(true);
+  } finally {
+    await client.close();
+    await daemon.close();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 90000);
 
 test("a plugin transforms workspace creation once across receipt replays and observes its committed lifecycle", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "paseo-lifecycle-"));

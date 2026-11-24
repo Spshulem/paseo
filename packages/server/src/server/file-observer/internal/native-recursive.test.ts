@@ -81,6 +81,52 @@ test.each(["existing", "new"])(
   },
 );
 
+test("can attach without an initial inventory when the consumer owns the snapshot", async () => {
+  const root = await mkdtemp(join(tmpdir(), "native-no-initial-scan-"));
+  await mkdir(join(root, "nested"));
+  await writeFile(join(root, "nested", "existing.txt"), "before");
+  const paths = createObserverPaths(process.platform);
+  const notifications = new EventEmitter();
+  const observer = createFileObserver();
+  let active = true;
+  const backend = createNativeRecursiveBackend(
+    {
+      root,
+      metrics: observer.getDiagnostics(),
+      initialScan: false,
+      isActive: () => active,
+      isIgnored: () => false,
+      isPathInside: paths.isInside,
+      queueEvent: () => undefined,
+      fail: (error) => {
+        throw error;
+      },
+    },
+    paths,
+    (_root, listener) => {
+      notifications.on("change", listener);
+      return {
+        close: () => notifications.removeAllListeners(),
+        on: (event, onError) => notifications.on(event, onError),
+      };
+    },
+  );
+  try {
+    await backend.start();
+    expect(backend.getDiagnostics().nativeTrackedFileCount).toBe(0);
+    await writeFile(join(root, "nested", "later.txt"), "after");
+    notifications.emit("change", "change", join(root, "nested", "later.txt"));
+    await expect
+      .poll(() => backend.getDiagnostics().pendingReconciliationWorkCount)
+      .toBeGreaterThan(0);
+  } finally {
+    active = false;
+    await backend.close();
+    await observer.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("a file announced only as changed remains visible to coalesced deletion scans", async () => {
   const root = await mkdtemp(join(tmpdir(), "native-change-only-"));
   const directory = join(root, "nested");

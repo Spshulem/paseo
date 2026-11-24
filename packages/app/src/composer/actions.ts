@@ -22,6 +22,7 @@ import { i18n } from "@/i18n/i18next";
 
 export interface QueuedComposerMessage {
   id: string;
+  queuedAt?: number;
   text: string;
   attachments: ComposerAttachment[];
 }
@@ -250,6 +251,7 @@ export function queueComposerMessage(input: QueueComposerMessageInput): QueueCom
   }
   const item: QueuedComposerMessage = {
     id: generateMessageId(),
+    queuedAt: Date.now(),
     text: trimmed,
     attachments: input.attachments,
   };

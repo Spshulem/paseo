@@ -70,7 +70,7 @@ class LinuxBackend implements ObservationBackend {
     await this.enqueue([this.host.root], "baseline");
   }
 
-  async updateIgnore(): Promise<void> {
+  async updateIgnore(options?: { initialScan?: boolean }): Promise<void> {
     this.discardIgnoredClassifications();
     const inFlight = [...this.classifications];
     for (const [directory, watcher] of this.watchers) {
@@ -80,6 +80,10 @@ class LinuxBackend implements ObservationBackend {
       }
     }
     this.cancelQueued();
+    if (options?.initialScan === false) {
+      await Promise.allSettled(inFlight);
+      return;
+    }
     await this.enqueue([this.host.root], "changes");
     await Promise.allSettled(inFlight);
   }

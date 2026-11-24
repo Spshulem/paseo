@@ -84,7 +84,7 @@ class Observation implements ManagedObservation, ObservationHost {
     };
   }
 
-  async updateIgnore(paths: string[]): Promise<void> {
+  async updateIgnore(paths: string[], options?: { initialScan?: boolean }): Promise<void> {
     if (!this.isActive()) return;
     const next = this.input.paths.normalizeIgnoredRoots(this.root, paths);
     if (samePaths(this.ignoredRoots, next)) return;
@@ -93,7 +93,7 @@ class Observation implements ManagedObservation, ObservationHost {
       if (this.isIgnored(path)) this.pendingEvents.delete(path);
     }
     try {
-      await this.backend.updateIgnore();
+      await this.backend.updateIgnore(options);
     } catch (error) {
       this.fail(toError(error));
       throw error;
@@ -117,6 +117,10 @@ class Observation implements ManagedObservation, ObservationHost {
 
   isActive(): boolean {
     return this.status === "open";
+  }
+
+  get initialScan(): boolean {
+    return this.input.options.initialScan !== false;
   }
 
   isIgnored(path: string): boolean {

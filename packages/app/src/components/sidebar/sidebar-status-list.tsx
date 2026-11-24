@@ -38,6 +38,7 @@ import {
   CircleCheck,
   CircleDot,
   CircleX,
+  Tag,
 } from "lucide-react-native";
 import { useToast } from "@/contexts/toast-context";
 import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
@@ -74,6 +75,7 @@ import {
   SidebarWorkspaceMenu,
 } from "@/components/sidebar/sidebar-workspace-menu";
 import { SidebarSectionHeader } from "@/components/sidebar/sidebar-section-header";
+import { SidebarRecentsSection } from "@/components/sidebar/sidebar-recents-section";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
 import { useLimitedSidebarGroup } from "@/components/sidebar/use-limited-sidebar-group";
 import type { ToggleSidebarWorkspacePin } from "@/hooks/use-sidebar-workspace-pin";
@@ -82,6 +84,8 @@ import type { DraggableListDragHandleProps } from "@/components/draggable-list.t
 import { useLongPressDragInteraction } from "@/components/sidebar/use-long-press-drag-interaction";
 
 // Themed icon wrappers
+const ThemedTag = withUnistyles(Tag);
+
 const mutedGroupIconProps = densityIconProps("sm", (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
@@ -254,6 +258,7 @@ export function SidebarStatusWorkspaceList({
           )}
         </View>
       ) : null}
+      <SidebarRecentsSection onChatPress={onWorkspacePress} />
       {listHeaderComponent}
       {sidebarFilterEmpty ? (
         <SidebarFilterEmptyState />
@@ -326,6 +331,7 @@ function StatusGroupList({
           key={group.key}
           group={group}
           collapsed={collapsedWorkspaceGroupKeys.has(group.key)}
+          collapsedWorkspaceGroupKeys={collapsedWorkspaceGroupKeys}
           projectIconByProjectViewKey={projectIconByProjectViewKey}
           shortcutIndex={shortcutIndex}
           showShortcutBadges={showShortcutBadges}
@@ -347,6 +353,7 @@ const STATUS_GROUP_VISIBILITY = {
 function StatusGroupRows({
   group,
   collapsed,
+  collapsedWorkspaceGroupKeys,
   projectIconByProjectViewKey,
   shortcutIndex,
   showShortcutBadges,
@@ -357,6 +364,7 @@ function StatusGroupRows({
 }: {
   group: SidebarWorkspaceGroup;
   collapsed: boolean;
+  collapsedWorkspaceGroupKeys: ReadonlySet<string>;
   projectIconByProjectViewKey: ReadonlyMap<string, string | null>;
   shortcutIndex: Map<string, number>;
   showShortcutBadges: boolean;
@@ -407,6 +415,21 @@ function StatusGroupRows({
         >
           {leadingWorkspace ? renderWorkspaceRow(leadingWorkspace) : null}
           {visibleWorkspaces.map(renderWorkspaceRow)}
+          {group.children ? (
+            <View style={styles.nestedLabelGroups}>
+              <StatusGroupList
+                groups={group.children}
+                collapsedWorkspaceGroupKeys={collapsedWorkspaceGroupKeys}
+                projectIconByProjectViewKey={projectIconByProjectViewKey}
+                shortcutIndex={shortcutIndex}
+                showShortcutBadges={showShortcutBadges}
+                onWorkspacePress={onWorkspacePress}
+                hostBadgeByServerId={hostBadgeByServerId}
+                supportsPinningByServerId={supportsPinningByServerId}
+                onToggleWorkspacePin={onToggleWorkspacePin}
+              />
+            </View>
+          ) : null}
           {canToggleWorkspaces ? (
             <SidebarGroupToggleRow
               expanded={workspacesExpanded}
@@ -451,6 +474,7 @@ function StatusGroupHeader({
   collapsed: boolean;
 }) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
   const toggleWorkspaceGroupCollapsed = useSidebarCollapsedSectionsStore(
     (state) => state.toggleWorkspaceGroupCollapsed,
@@ -485,7 +509,7 @@ function StatusGroupHeader({
             <StatusGroupLeadingVisual
               leading={group.leading}
               collapsed={collapsed}
-              showChevron={isHovered}
+              showChevron={isHovered || platformIsNative || isCompact}
             />
           </View>
           <View style={styles.statusGroupTitleGroup}>
@@ -509,6 +533,7 @@ function StatusGroupLeadingVisual({
   showChevron: boolean;
 }) {
   if (!showChevron) {
+    if (leading.kind === "label") return <ThemedTag uniProps={mutedGroupIconProps} />;
     return <StatusGroupIcon bucket={leading.bucket} />;
   }
   if (collapsed) {
@@ -1103,6 +1128,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[3],
   },
   statusWorkspaceListContainer: {},
+  nestedLabelGroups: {
+    paddingLeft: theme.spacing[3],
+  },
   statusGroupRow: {
     minHeight: density.rowHeight,
     paddingVertical: theme.spacing[2],

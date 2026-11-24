@@ -20,10 +20,14 @@ const UntrustedWorkspaceSourceSchema = z.object({
   headRepository: z.string(),
 });
 
-const PersistedProjectRecordSchema = z.object({
+export const PersistedProjectRecordSchema = z.object({
   projectId: z.string(),
   rootPath: z.string(),
-  kind: z.enum(["git", "non_git"]),
+  // COMPAT(localThemeProjectKind): imported theme projects used "local" before
+  // v0.16. Remove after 2027-05-13 once those registries have been rewritten.
+  kind: z
+    .enum(["git", "non_git", "local"])
+    .transform((kind) => (kind === "local" ? "non_git" : kind)),
   displayName: z.string(),
   // COMPAT(projectKey): added in v0.2.4 on 2026-07-28; remove optional after 2027-01-28.
   projectKey: z
@@ -49,7 +53,7 @@ const PersistedProjectRecordSchema = z.object({
   archivedAt: z.string().nullable(),
 });
 
-const PersistedWorkspaceRecordSchema = z.object({
+export const PersistedWorkspaceRecordSchema = z.object({
   parentWorkspaceId: z.string().optional(),
   workspaceId: z.string(),
   projectId: z.string(),
@@ -296,6 +300,8 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") {
+        // Never replace an unreadable registry with an empty cache on the next write.
+        this.mutationsBlockedUntilRestart = true;
         this.logger.error({ err: error, filePath: this.filePath }, "Failed to load registry file");
       }
     }

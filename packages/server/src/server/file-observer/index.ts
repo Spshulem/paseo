@@ -14,12 +14,18 @@ export interface FileChange {
 
 export interface FileObserverOptions {
   ignore?: string[];
+  /**
+   * Skip the initial inventory pass when the consumer has its own authoritative
+   * snapshot. Native recursive watchers can begin delivering events immediately;
+   * later ignore updates still establish a full inventory barrier.
+   */
+  initialScan?: boolean;
 }
 
 export type FileObserverCallback = (error: Error | null, events: FileChange[]) => void;
 
 export interface FileObserverSubscription {
-  updateIgnore(paths: string[]): Promise<void>;
+  updateIgnore(paths: string[], options?: { initialScan?: boolean }): Promise<void>;
   unsubscribe(): Promise<void>;
 }
 

@@ -1,6 +1,10 @@
+import {
+  applyWorkspaceProjectRecovery,
+  planWorkspaceProjectRecovery,
+} from "./workspace-registry-recovery.js";
 import os from "node:os";
 import path from "node:path";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 
 import { beforeEach, afterEach, describe, expect, test } from "vitest";
 
@@ -80,6 +84,53 @@ describe("workspace registries", () => {
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("loads imported local theme projects without losing other project identities", async () => {
+    const original = createPersistedProjectRecord({
+      projectId: "repo",
+      rootPath: "/repo",
+      kind: "git",
+      displayName: "Repo",
+      createdAt: "2026-11-13T00:00:00Z",
+      updatedAt: "2026-11-13T00:00:00Z",
+    });
+    const theme = {
+      ...original,
+      projectId: "theme",
+      rootPath: "/themes/buildbetter",
+      kind: "local",
+      customName: "BuildBetter",
+    };
+    const file = path.join(tmpDir, "projects", "projects.json");
+    await writeJsonFileAtomic(file, [original, theme]);
+    await projectRegistry.initialize();
+    expect(await projectRegistry.list()).toEqual([original, { ...theme, kind: "non_git" }]);
+    await projectRegistry.upsert({ ...original, customName: "Renamed repo" });
+    const reloaded = new FileBackedProjectRegistry(file, logger);
+    expect(await reloaded.get("theme")).toMatchObject({
+      projectId: "theme",
+      kind: "non_git",
+      customName: "BuildBetter",
+    });
+    expect(await reloaded.list()).toHaveLength(2);
+  });
+
+  test("refuses writes after a malformed registry read so its records remain recoverable", async () => {
+    const original = createPersistedProjectRecord({
+      projectId: "repo",
+      rootPath: "/repo",
+      kind: "git",
+      displayName: "Repo",
+      createdAt: "2026-11-13T00:00:00Z",
+      updatedAt: "2026-11-13T00:00:00Z",
+    });
+    const file = path.join(tmpDir, "projects", "projects.json");
+    await writeJsonFileAtomic(file, [original, { projectId: "unreadable" }]);
+    const before = readFileSync(file, "utf8");
+    await projectRegistry.initialize();
+    await expect(projectRegistry.upsert(original)).rejects.toThrow("mutations are blocked");
+    expect(readFileSync(file, "utf8")).toBe(before);
   });
 
   test("creates, updates, archives, deletes, and lists project records", async () => {
@@ -603,5 +654,128 @@ describe("workspace registries", () => {
       title: "Payments work",
       pinnedAt: "2026-03-03T00:00:00.000Z",
     });
+  });
+});
+
+describe("workspace project recovery", () => {
+  let directory: string;
+  beforeEach(() => {
+    directory = mkdtempSync(path.join(os.tmpdir(), "paseo-membership-recovery-"));
+  });
+  afterEach(() => {
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  function fixture() {
+    const original = createPersistedWorkspaceRecord({
+      workspaceId: "original-workspace",
+      projectId: "original-project",
+      cwd: "/repo/worktree",
+      worktreeRoot: "/repo/worktree",
+      mainRepoRoot: "/repo/main",
+      kind: "worktree",
+      displayName: "Original",
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-02",
+    });
+    const current = {
+      ...original,
+      projectId: "theme-project",
+      title: "Renamed",
+      labels: ["Existing"],
+      pinnedAt: "2026-01-03",
+    };
+    return { original, current };
+  }
+
+  test("restores original IDs, preserves current workspace data, and can resume after partial application", async () => {
+    const { original, current } = fixture();
+    const logger = createTestLogger();
+    const projects = new FileBackedProjectRegistry(path.join(directory, "projects.json"), logger);
+    const workspaces = new FileBackedWorkspaceRegistry(
+      path.join(directory, "workspaces.json"),
+      logger,
+    );
+    await workspaces.upsert(current);
+    const plan = planWorkspaceProjectRecovery({
+      workspaces: [current],
+      backup: [original],
+      projects: [],
+    });
+    expect(
+      plan.projects.map((project) => ({ id: project.projectId, root: project.rootPath })),
+    ).toEqual([{ id: "original-project", root: "/repo/main" }]);
+    await projects.upsert(plan.projects[0]);
+    await applyWorkspaceProjectRecovery({ plan, projects, workspaces });
+    await applyWorkspaceProjectRecovery({ plan, projects, workspaces });
+    expect(await workspaces.get(current.workspaceId)).toEqual({
+      ...current,
+      projectId: original.projectId,
+    });
+    const reloaded = new FileBackedWorkspaceRegistry(
+      path.join(directory, "workspaces.json"),
+      logger,
+    );
+    expect(await reloaded.get(current.workspaceId)).toEqual({
+      ...current,
+      projectId: original.projectId,
+    });
+  });
+
+  test("rejects stale membership before making any writes", async () => {
+    const { original, current } = fixture();
+    const logger = createTestLogger();
+    const projects = new FileBackedProjectRegistry(path.join(directory, "projects.json"), logger);
+    const workspaces = new FileBackedWorkspaceRegistry(
+      path.join(directory, "workspaces.json"),
+      logger,
+    );
+    const plan = planWorkspaceProjectRecovery({
+      workspaces: [current],
+      backup: [original],
+      projects: [],
+    });
+    await workspaces.upsert({ ...current, projectId: "changed-after-planning" });
+    await expect(applyWorkspaceProjectRecovery({ plan, projects, workspaces })).rejects.toThrow(
+      "membership changed",
+    );
+    expect(await projects.list()).toEqual([]);
+    expect((await workspaces.get(current.workspaceId))?.projectId).toBe("changed-after-planning");
+  });
+
+  test("recovers migrated cwd aliases without changing their lexical identity", () => {
+    const backing = path.join(directory, "backing");
+    const alias = path.join(directory, "alias");
+    mkdirSync(backing);
+    symlinkSync(backing, alias, "dir");
+    const { original } = fixture();
+    const migrated = {
+      ...original,
+      cwd: alias,
+      worktreeRoot: backing,
+      mainRepoRoot: path.join(directory, "main"),
+    };
+    const current = { ...migrated, projectId: "theme-project" };
+    const plan = planWorkspaceProjectRecovery({
+      workspaces: [current],
+      backup: [migrated],
+      projects: [],
+    });
+    expect(plan.projects[0].rootPath).toBe(migrated.mainRepoRoot);
+    expect(plan.assignments[0].cwd).toBe(alias);
+  });
+
+  test("refuses conflicting roots instead of guessing ownership", () => {
+    const { original } = fixture();
+    const unrelated = {
+      ...original,
+      workspaceId: "unrelated",
+      cwd: "/elsewhere",
+      worktreeRoot: null,
+      mainRepoRoot: null,
+    };
+    expect(() =>
+      planWorkspaceProjectRecovery({ workspaces: [original, unrelated], backup: [], projects: [] }),
+    ).toThrow("Conflicting roots");
   });
 });

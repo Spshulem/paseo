@@ -91,6 +91,17 @@ export const fr: TranslationResources = {
       close: "Fermer le menu",
     },
     commandCenter: {
+      quick: "Rapide",
+      deep: "Approfondie",
+      deepPlaceholder: "Rechercher dans les messages…",
+      searchingConversations: "Recherche de conversations…",
+      deepDescription: "Recherche les titres et jusqu’à 60 messages récents par discussion.",
+      includeArchived: "Inclure les discussions archivées",
+      deepUnavailable: "La recherche de conversations est indisponible sur cet hôte.",
+      deepTooLong: "Utilisez 300 caractères maximum.",
+      deepCoverage: "{{indexed}}/{{total}} discussions indexées · {{unavailable}} titres seuls",
+      deepIndexing:
+        "Indexation de {{indexed}}/{{total}} discussions · {{unavailable}} titres seuls",
       placeholder: "Rechercher des commandes, fichiers, espaces de travail et agents…",
       filePlaceholder: "Rechercher des fichiers…",
       searchingFiles: "Recherche de fichiers…",
@@ -1243,6 +1254,7 @@ export const fr: TranslationResources = {
         updateHost: "Mettez les hôtes à jour pour trier les espaces de travail",
       },
       grouping: {
+        statusThemes: "Statut → Libellés",
         label: "Regroupement",
         project: "Projet",
         status: "Statut",
@@ -1284,6 +1296,11 @@ export const fr: TranslationResources = {
       description:
         "Modifiez ou effacez les filtres de la barre latérale pour afficher les espaces de travail.",
       clear: "Effacer les filtres",
+    },
+    recents: {
+      title: "Récents",
+      empty: "Les discussions apparaissent ici après l’envoi d’un message.",
+      untitled: "Discussion sans titre",
     },
     pinned: {
       title: "Épinglés",

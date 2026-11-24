@@ -1612,14 +1612,18 @@ export async function createPaseoDaemon(
     const agentMcpRoute = "/mcp/agents";
 
     const createAgentMcpSession = async (callerAgentId?: string) => {
-      const agentMcpServer = await createAgentMcpServer(
-        createAgentToolHostDependencies({
-          callerAgentId,
-          paseoToolPolicy: callerAgentId
-            ? agentManager.getPaseoToolPolicy(callerAgentId)
-            : undefined,
-        }),
-      );
+      const toolHostDependencies = createAgentToolHostDependencies({
+        callerAgentId,
+        paseoToolPolicy: callerAgentId ? agentManager.getPaseoToolPolicy(callerAgentId) : undefined,
+      });
+      const agentMcpServer = await createAgentMcpServer({
+        ...toolHostDependencies,
+        // Provider-launched sessions get a tiny discovery surface. The full
+        // policy-filtered catalog is fetched in search results and executed
+        // through the router, so Claude/Codex do not pay for every schema on
+        // every turn. Top-level MCP clients retain the direct catalog.
+        lazyToolLoading: callerAgentId !== undefined,
+      });
 
       // Stateless mode: each HTTP request builds a fresh server + transport that is
       // torn down when the response closes, so no per-session state is retained between

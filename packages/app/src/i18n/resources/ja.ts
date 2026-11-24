@@ -91,6 +91,16 @@ export const ja: TranslationResources = {
       close: "メニューを閉じる",
     },
     commandCenter: {
+      quick: "クイック",
+      deep: "詳細",
+      deepPlaceholder: "会話のメッセージを検索…",
+      searchingConversations: "会話を検索中…",
+      deepDescription: "チャットのタイトルと最近の最大60件のメッセージを検索します。",
+      includeArchived: "アーカイブ済みのチャットを含める",
+      deepUnavailable: "このホストでは会話検索を利用できません。",
+      deepTooLong: "300文字以内で入力してください。",
+      deepCoverage: "{{indexed}}/{{total}}件を索引化済み · {{unavailable}}件はタイトルのみ",
+      deepIndexing: "{{indexed}}/{{total}}件を索引化中 · {{unavailable}}件はタイトルのみ",
       placeholder: "コマンド、ファイル、ワークスペース、エージェントを検索...",
       filePlaceholder: "ファイルを検索...",
       searchingFiles: "ファイルを検索中...",
@@ -1227,6 +1237,7 @@ export const ja: TranslationResources = {
         updateHost: "ワークスペースを並べ替えるにはホストを更新してください",
       },
       grouping: {
+        statusThemes: "ステータス → ラベル",
         label: "グループ化",
         project: "プロジェクト",
         status: "ステータス",
@@ -1268,6 +1279,11 @@ export const ja: TranslationResources = {
       description:
         "ワークスペースを表示するにはサイドバーのフィルターを変更またはクリアしてください。",
       clear: "フィルターをクリア",
+    },
+    recents: {
+      title: "最近のチャット",
+      empty: "メッセージを送信すると、ここにチャットが表示されます。",
+      untitled: "無題のチャット",
     },
     pinned: {
       title: "固定済み",

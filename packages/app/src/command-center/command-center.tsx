@@ -5,6 +5,7 @@ import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import {
   FlatList,
   Pressable,
+  Switch,
   Text,
   View,
   type LayoutChangeEvent,
@@ -93,6 +94,8 @@ import {
 } from "./results";
 import { createCommandCenterInteraction, type CommandCenterInteraction } from "./interaction";
 import { useWorkspaceFileSearch } from "./workspace-file-search";
+import { useConversationSearch } from "./conversation-search";
+import { useSettings } from "@/hooks/use-settings";
 
 const ThemedBottomSheetTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
@@ -265,6 +268,10 @@ interface CommandCenterState {
   open: boolean;
   scope: CommandCenterScope;
   clearScope(): void;
+  setSearchMode(mode: "quick" | "deep"): void;
+  deepSearchIncludeArchived: boolean;
+  setDeepSearchIncludeArchived(value: boolean): void;
+  deepSearch: ReturnType<typeof useConversationSearch>;
   query: string;
   setQuery(query: string): void;
   activeId: string | null;
@@ -289,17 +296,24 @@ function useCommandCenterState(
   const setOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const setScope = useKeyboardShortcutsStore((state) => state.setCommandCenterScope);
   const snapshot = useCommandCenterContributions();
+  const deepSearchIncludeArchived = useSettings((settings) => settings.deepSearchIncludeArchived);
+  const { updateSettings } = useSettings();
   const inputRef = useRef<EditingTextInputHandle>(null);
   const previousOpenRef = useRef(open);
   const { query, activeId } = useSyncExternalStore(interaction.subscribe, interaction.getSnapshot);
   const builtInSections = useBuiltInSections(open, query);
+  const deepSearch = useConversationSearch(
+    open && scope === "deep",
+    query,
+    deepSearchIncludeArchived,
+  );
   const {
     entries: fileSearchEntries,
     loading: fileSearchLoading,
     error: fileSearchError,
     openFile,
   } = useWorkspaceFileSearch({
-    enabled: open && (scope === "files" || Boolean(query.trim())),
+    enabled: open && scope !== "deep" && (scope === "files" || Boolean(query.trim())),
     query,
   });
   const fileSections = useMemo<CommandCenterResultSection[]>(() => {
@@ -328,19 +342,28 @@ function useCommandCenterState(
     () => buildContributionSections(snapshot.contributions, query),
     [query, snapshot.contributions],
   );
-  const projection = useMemo(
-    () =>
-      projectCommandCenterRows(
-        scope === "files"
-          ? fileSections
-          : [...contributionSections, ...fileSections, ...builtInSections],
-        listMetrics,
-      ),
-    [builtInSections, contributionSections, fileSections, listMetrics, scope],
-  );
+  const projection = useMemo(() => {
+    let sections = [...contributionSections, ...fileSections, ...builtInSections];
+    if (scope === "deep") sections = deepSearch.sections;
+    if (scope === "files") sections = fileSections;
+    return projectCommandCenterRows(sections, listMetrics);
+  }, [
+    builtInSections,
+    contributionSections,
+    deepSearch.sections,
+    fileSections,
+    listMetrics,
+    scope,
+  ]);
   useLayoutEffect(() => {
-    interaction.update({ open, scope, query, projection, loading: fileSearchLoading });
-  }, [interaction, open, scope, query, projection, fileSearchLoading]);
+    interaction.update({
+      open,
+      scope,
+      query,
+      projection,
+      loading: scope === "deep" ? deepSearch.loading : fileSearchLoading,
+    });
+  }, [interaction, open, scope, query, projection, fileSearchLoading, deepSearch.loading]);
 
   const close = useCallback(() => setOpen(false), [setOpen]);
   const select = useCallback(
@@ -407,6 +430,12 @@ function useCommandCenterState(
     open,
     scope,
     clearScope: () => setScope(null),
+    setSearchMode: (mode) => setScope(mode === "deep" ? "deep" : null),
+    deepSearchIncludeArchived,
+    setDeepSearchIncludeArchived: (value) => {
+      void updateSettings({ deepSearchIncludeArchived: value });
+    },
+    deepSearch,
     query,
     setQuery: interaction.setQuery,
     activeId,
@@ -832,10 +861,19 @@ export function CommandCenter() {
   const keyExtractor = useCallback((row: CommandCenterListRow) => row.key, []);
   const empty = useMemo(
     () =>
-      state.fileSearchError || state.fileSearchLoading ? null : (
+      state.fileSearchError ||
+      state.fileSearchLoading ||
+      (state.scope === "deep" && (state.deepSearch.loading || state.deepSearch.hasError)) ? null : (
         <Text style={styles.emptyText}>{t("shell.commandCenter.noMatches")}</Text>
       ),
-    [state.fileSearchError, state.fileSearchLoading, t],
+    [
+      state.fileSearchError,
+      state.fileSearchLoading,
+      state.scope,
+      state.deepSearch.loading,
+      state.deepSearch.hasError,
+      t,
+    ],
   );
   const fileSearchError = useMemo(
     () =>
@@ -891,6 +929,9 @@ export function CommandCenter() {
     onKeyDown: handleOverlayKeyDown,
   });
 
+  let searchPlaceholder = t("shell.commandCenter.placeholder");
+  if (state.scope === "files") searchPlaceholder = t("shell.commandCenter.filePlaceholder");
+  if (state.scope === "deep") searchPlaceholder = t("shell.commandCenter.deepPlaceholder");
   if (showBottomSheet) {
     return (
       <IsolatedBottomSheetModal
@@ -921,21 +962,22 @@ export function CommandCenter() {
               variant="bottom-sheet"
               onChangeText={state.setQuery}
               onSubmitEditing={submit}
-              placeholder={
-                state.scope === "files"
-                  ? t("shell.commandCenter.filePlaceholder")
-                  : t("shell.commandCenter.placeholder")
-              }
+              placeholder={searchPlaceholder}
               style={[styles.input, styles.growingInput]}
               autoCapitalize="none"
               autoCorrect={false}
               autoFocus
             />
             <FileSearchLoadingIndicator
-              loading={state.fileSearchLoading}
-              label={t("shell.commandCenter.searchingFiles")}
+              loading={state.scope === "deep" ? state.deepSearch.loading : state.fileSearchLoading}
+              label={t(
+                state.scope === "deep"
+                  ? "shell.commandCenter.searchingConversations"
+                  : "shell.commandCenter.searchingFiles",
+              )}
             />
           </View>
+          <SearchModes state={state} />
           {fileSearchError}
           <BottomSheetFlatList ref={bottomSheetListRef} {...commonListProps} />
         </OverlayLayerProvider>
@@ -958,27 +1000,104 @@ export function CommandCenter() {
                 ref={state.inputRef}
                 initialValue={state.query}
                 onChangeText={state.setQuery}
-                placeholder={
-                  state.scope === "files"
-                    ? t("shell.commandCenter.filePlaceholder")
-                    : t("shell.commandCenter.placeholder")
-                }
+                placeholder={searchPlaceholder}
                 style={[styles.input, styles.growingInput]}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoFocus
               />
               <FileSearchLoadingIndicator
-                loading={state.fileSearchLoading}
-                label={t("shell.commandCenter.searchingFiles")}
+                loading={
+                  state.scope === "deep" ? state.deepSearch.loading : state.fileSearchLoading
+                }
+                label={t(
+                  state.scope === "deep"
+                    ? "shell.commandCenter.searchingConversations"
+                    : "shell.commandCenter.searchingFiles",
+                )}
               />
             </View>
+            <SearchModes state={state} />
             {fileSearchError}
             <FlatList ref={listRef} {...commonListProps} />
           </View>
         </View>
       </Modal>
     </OverlayLayerProvider>
+  );
+}
+
+function SearchModeButton({
+  mode,
+  selected,
+  onSelect,
+}: {
+  mode: "quick" | "deep";
+  selected: boolean;
+  onSelect: CommandCenterState["setSearchMode"];
+}) {
+  const { t } = useTranslation();
+  const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  const press = useCallback(() => onSelect(mode), [onSelect, mode]);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      testID={`command-center-mode-${mode}`}
+      onPress={press}
+      style={[styles.searchModeButton, selected && styles.activeRow]}
+    >
+      <Text style={styles.title}>{t(`shell.commandCenter.${mode}`)}</Text>
+    </Pressable>
+  );
+}
+
+function SearchModes({ state }: { state: CommandCenterState }) {
+  const { t } = useTranslation();
+  if (state.scope === "files") return null;
+  const deep = state.scope === "deep";
+  return (
+    <View style={styles.searchModes}>
+      <View style={styles.searchModeButtons}>
+        {(["quick", "deep"] as const).map((mode) => (
+          <SearchModeButton
+            key={mode}
+            mode={mode}
+            selected={deep === (mode === "deep")}
+            onSelect={state.setSearchMode}
+          />
+        ))}
+      </View>
+      {deep && (
+        <Text style={styles.searchDescription}>{t("shell.commandCenter.deepDescription")}</Text>
+      )}
+      {deep && (
+        <View style={styles.searchArchivedRow}>
+          <Switch
+            value={state.deepSearchIncludeArchived}
+            onValueChange={state.setDeepSearchIncludeArchived}
+            accessibilityLabel={t("shell.commandCenter.includeArchived")}
+            testID="command-center-include-archived"
+          />
+          <Text style={styles.searchDescription}>{t("shell.commandCenter.includeArchived")}</Text>
+        </View>
+      )}
+      {deep &&
+        state.deepSearch.messages.map((message) => (
+          <Text key={message} style={styles.searchDescription} accessibilityLiveRegion="polite">
+            {message}
+          </Text>
+        ))}
+      {deep && state.deepSearch.hasError && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={state.deepSearch.retry}
+          style={styles.searchModeButton}
+        >
+          <Text style={styles.title}>{t("common.actions.retry")}</Text>
+        </Pressable>
+      )}
+    </View>
   );
 }
 
@@ -1057,6 +1176,24 @@ const styles = StyleSheet.create((theme) => ({
   },
   growingInput: { flex: 1, minWidth: 0 },
   searchRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
+  searchModes: {
+    paddingHorizontal: theme.spacing[3],
+    paddingBottom: theme.spacing[2],
+    gap: theme.spacing[1],
+  },
+  searchModeButtons: { flexDirection: "row", gap: theme.spacing[1] },
+  searchModeButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+  },
+  searchDescription: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 18,
+  },
+  searchArchivedRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
   fileSearchStatus: { width: 14, height: 14, alignItems: "center", justifyContent: "center" },
   scopeChip: {
     // Stretching to the row rather than setting a height keeps the chip exactly as tall as the

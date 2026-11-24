@@ -1255,7 +1255,12 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     const repoRoot = await this.resolveCheckoutWatchRoot(cwd);
     const cwdPaths = repoRoot ? await GitObservationPaths.create(cwd) : null;
     this.assertNotDisposed();
-    const targetCwd = repoRoot ?? cwd;
+    // Keep repository metadata shared by repo root, but scope working-tree
+    // observation to the workspace directory. A parent checkout can itself
+    // contain many nested projects (for example /Users/shooby/Dev); watching
+    // that parent for one nested workspace scans every sibling and can starve
+    // the daemon's event loop during startup.
+    const targetCwd = repoRoot && cwdPaths?.matches(repoRoot) ? repoRoot : cwd;
     const existingTarget = this.workingTreeWatchTargets.get(targetCwd);
     if (existingTarget) {
       this.rememberWorkingTreeWatchAlias(existingTarget, cwd);
@@ -1269,7 +1274,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       return target;
     }
 
-    const watchPath = repoRoot && cwdPaths?.matches(repoRoot) ? cwd : targetCwd;
+    const watchPath = cwd;
     const setup = this.createWorkingTreeWatchTarget(targetCwd, watchPath, repoRoot).finally(() => {
       if (this.workingTreeWatchSetups.get(targetCwd) === setup) {
         this.workingTreeWatchSetups.delete(targetCwd);
@@ -1474,9 +1479,10 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     watchPath: string,
     repoRoot: string | null,
   ): Promise<WorkingTreeWatchTarget> {
-    const ignoredDirectories = repoRoot
-      ? (await this.loadIgnoredDirs(watchPath)).ignored
-      : new Set<string>();
+    // Attach the watcher first. Git ignore discovery can take tens of seconds
+    // on large worktrees; doing it before subscribe serializes every workspace
+    // behind that slow command and blocks unrelated RPCs during startup.
+    const ignoredDirectories = new Set<string>();
     const paths = await GitObservationPaths.create(watchPath);
     this.assertNotDisposed();
     const target: WorkingTreeWatchTarget = {
@@ -1511,6 +1517,8 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
 
     if (repoRoot === null) {
       this.startWorkingTreeWatchFallback(target, "not_a_git_checkout");
+    } else {
+      void this.refreshWorkingTreeIgnoredDirectories(target);
     }
 
     return target;
@@ -1664,7 +1672,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
           }
           this.notifyWorkingTreeChanged(target, "working-tree-watch");
         },
-        { ignore },
+        // Git supplies the authoritative initial snapshot. Avoid making the
+        // native recursive watcher inventory the whole checkout for every
+        // workspace during sidebar startup; that scan blocks the daemon's
+        // shared filesystem and event-loop resources on large worktrees.
+        { ignore, initialScan: false },
         markSubscribeSettled,
       );
       if (watcherErrored) {
@@ -1992,7 +2004,7 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
         target.fallbackPollTimer = null;
       }
     }
-    await this.refreshWorkingTreeIgnoredDirectories(target);
+    void this.refreshWorkingTreeIgnoredDirectories(target);
   }
 
   /**
@@ -2256,6 +2268,13 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
     if (target.closed) {
       return;
     }
+    // A .gitignore or topology event can request a newer read while this Git
+    // command is in flight. Do not publish the older result into the live
+    // watcher; the surrounding refresh loop will immediately run the newer
+    // request instead.
+    if (target.ignoredDirectoriesRefreshRequested) {
+      return;
+    }
     if (failed) {
       // A failed `git ls-files` must not leave directories discovered since
       // the last completed refresh permanently marked known — see the
@@ -2288,7 +2307,11 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
       return;
     }
     try {
-      await subscription.updateIgnore(next);
+      // WorkspaceGit owns the authoritative Git snapshot, so changing the
+      // watcher filter never needs a filesystem inventory pass. Updating the
+      // ignored roots is enough to filter future events and avoids replaying a
+      // full checkout scan when Git metadata changes during startup.
+      await subscription.updateIgnore(next, { initialScan: false });
       target.appliedIgnoreList = next;
     } catch (error) {
       target.subscription = null;
@@ -2535,7 +2558,9 @@ export class WorkspaceGitServiceImpl implements WorkspaceGitService {
             }
           }
         },
-        { ignore },
+        // Repository metadata is also read authoritatively by Git. The watcher
+        // only needs to receive future metadata events after it is attached.
+        { ignore, initialScan: false },
         markSubscribeSettled,
       );
       openedSubscription = subscription;

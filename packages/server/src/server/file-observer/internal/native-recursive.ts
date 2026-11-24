@@ -96,16 +96,21 @@ class NativeRecursiveBackend implements ObservationBackend {
 
   async start(): Promise<void> {
     this.watchRoot();
+    if (this.host.initialScan === false) return;
     this.fullAuditRequested = true;
     this.auditQueued = true;
     await this.enqueueAudit(false, this.generation);
   }
 
-  async updateIgnore(): Promise<void> {
+  async updateIgnore(options?: { initialScan?: boolean }): Promise<void> {
     this.discardIgnoredClassifications();
     const inFlight = [...this.classifications];
     this.generation += 1;
     this.cancelAudits();
+    if (options?.initialScan === false) {
+      await Promise.allSettled(inFlight);
+      return;
+    }
     this.fullAuditRequested = true;
     this.auditQueued = true;
     await this.enqueueAudit(true, this.generation);

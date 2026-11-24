@@ -132,6 +132,12 @@ Paseo tools are not implemented as MCP tools internally. They live in a shared t
 
 A provider that can register runtime tools directly should set `supportsNativePaseoTools: true` and consume the already-filtered `launchContext.paseoTools` in `createSession`/`resumeSession`. When native tools are present, `AgentManager` strips the internal Paseo MCP server from the provider launch config so the provider does not receive the same tools twice. Providers that only know MCP should keep `supportsMcpServers: true` and let the daemon inject `/mcp/agents`; the MCP server builds the same policy-filtered catalog for that caller. Filtering is enforced at catalog registration in both paths. Browser tools remain subject to the daemon browser-tools setting and browser-host availability.
 
+Agent-scoped MCP sessions receive the catalog through the `paseo_tool_search`/`paseo_tool_call`
+discovery surface so unused schemas do not enter the initial model context. The router executes
+the same caller-scoped catalog and validation path; it is not a second permission boundary.
+Top-level MCP clients retain direct registrations for compatibility. Antigravity's bundled
+adapter does not receive Paseo's catalog; its native `agy` tool list is owned by the CLI.
+
 Pi is a process-backed provider. Paseo requires the user to have the `pi` binary installed and talks to it through `pi --mode rpc`; the server package does not embed Pi's SDK/runtime packages.
 
 Pi extension adapters live under `packages/server/src/server/agent/providers/pi/extensions/<extension>/`. Each adapter turns Pi RPC facts into Paseo tool, timeline, subagent, or question mappings through the [extension contract](../packages/server/src/server/agent/providers/pi/extensions/contract.ts). To add one, create its directory, add one entry to `extensions/registry.ts`, and test it with fixtures captured from the real extension in Pi that record package, version, source commit, Pi version, and capture date. `agent.ts`, `history-mapper.ts`, and `tool-call-mapper.ts` never name an extension.

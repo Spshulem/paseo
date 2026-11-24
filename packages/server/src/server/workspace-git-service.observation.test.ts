@@ -2206,6 +2206,7 @@ describe("WorkspaceGitService checkout observation", () => {
     await vi.waitFor(() => {
       expect(checkoutWatcher?.updateIgnore).toHaveBeenCalledWith(
         expect.arrayContaining([path.join(REPO_CWD, "deps")]),
+        { initialScan: false },
       );
     });
 
@@ -2282,6 +2283,7 @@ describe("WorkspaceGitService checkout observation", () => {
       expect(lsFilesCallCount).toBe(3);
       expect(checkoutWatcher?.updateIgnore).toHaveBeenCalledWith(
         expect.arrayContaining([path.join(REPO_CWD, "deps")]),
+        { initialScan: false },
       );
     });
 
@@ -2582,13 +2584,13 @@ describe("WorkspaceGitService checkout observation", () => {
     ignoredDirectories = "node_modules/\n";
     originalWatcher?.callback(null, [{ path: path.join(REPO_CWD, ".gitignore"), type: "update" }]);
     await vi.waitFor(() => {
-      expect(originalWatcher?.updateIgnore).toHaveBeenCalledTimes(1);
+      expect(originalWatcher?.updateIgnore).toHaveBeenCalled();
+      expect(originalWatcher?.ignore).not.toContain(path.join(REPO_CWD, "build"));
       expect(service.getMetrics().workspaceRefreshInFlightCount).toBe(0);
     });
 
     expect(getWatcherRecordsForDirectory(watcher, REPO_CWD)).toHaveLength(1);
     expect(originalWatcher?.unsubscribe).not.toHaveBeenCalled();
-    expect(originalWatcher?.ignore).not.toContain(path.join(REPO_CWD, "build"));
     const statusCallsAfterRefresh = getCheckoutStatus.mock.calls.length;
     originalWatcher?.callback(null, [
       { path: path.join(REPO_CWD, "build", "output.js"), type: "update" },
@@ -2626,9 +2628,9 @@ describe("WorkspaceGitService checkout observation", () => {
       { path: path.join(GIT_DIR, "info", "exclude"), type: "update" },
     ]);
     await vi.waitFor(() => {
-      expect(checkoutWatcher?.updateIgnore).toHaveBeenCalledTimes(1);
+      expect(checkoutWatcher?.updateIgnore).toHaveBeenCalled();
+      expect(checkoutWatcher?.ignore).toContain(path.join(REPO_CWD, "build"));
     });
-    expect(checkoutWatcher?.ignore).toContain(path.join(REPO_CWD, "build"));
 
     subscription.unsubscribe();
     service.dispose();

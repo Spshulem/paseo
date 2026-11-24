@@ -41,6 +41,12 @@ describe("sidebar view store", () => {
     });
   });
 
+  it("retains label grouping across persistence migrations", () => {
+    expect(migrateSidebarViewState({ groupMode: "label" }).groupMode).toBe("label");
+    useSidebarViewStore.getState().setGroupMode("label");
+    expect(useSidebarViewStore.getState().groupMode).toBe("label");
+  });
+
   it("toggles multiple hosts into and out of the filter", () => {
     const store = useSidebarViewStore.getState();
     store.toggleHostFilter("host-a");

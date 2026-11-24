@@ -21,7 +21,7 @@ export interface BackendDiagnostics {
 
 export interface ObservationBackend {
   start(): Promise<void>;
-  updateIgnore(): Promise<void>;
+  updateIgnore(options?: { initialScan?: boolean }): Promise<void>;
   close(): Promise<void>;
   getDiagnostics(): BackendDiagnostics;
 }
@@ -29,6 +29,7 @@ export interface ObservationBackend {
 export interface ObservationHost {
   root: string;
   metrics: ObserverMetrics;
+  initialScan: boolean;
   isActive(): boolean;
   isIgnored(path: string): boolean;
   isPathInside(root: string, path: string): boolean;

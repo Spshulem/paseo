@@ -90,6 +90,16 @@ export const ko: TranslationResources = {
       close: "메뉴 닫기",
     },
     commandCenter: {
+      quick: "빠른 검색",
+      deep: "심층 검색",
+      deepPlaceholder: "대화 메시지 검색…",
+      searchingConversations: "대화 검색 중…",
+      deepDescription: "채팅 제목과 채팅당 최근 메시지 최대 60개를 검색합니다.",
+      includeArchived: "보관된 채팅 포함",
+      deepUnavailable: "이 호스트에서는 대화 검색을 사용할 수 없습니다.",
+      deepTooLong: "300자 이하로 입력하세요.",
+      deepCoverage: "{{indexed}}/{{total}}개 채팅 색인 완료 · {{unavailable}}개는 제목만",
+      deepIndexing: "{{indexed}}/{{total}}개 채팅 색인 중 · {{unavailable}}개는 제목만",
       placeholder: "명령, 파일, 워크스페이스 및 에이전트 검색...",
       filePlaceholder: "파일 검색...",
       searchingFiles: "파일 검색 중...",
@@ -1221,6 +1231,7 @@ export const ko: TranslationResources = {
         updateHost: "작업 공간을 정렬하려면 호스트를 업데이트하세요",
       },
       grouping: {
+        statusThemes: "상태 → 레이블",
         label: "그룹화",
         project: "프로젝트",
         status: "상태",
@@ -1261,6 +1272,11 @@ export const ko: TranslationResources = {
       title: "일치하는 워크스페이스가 없습니다",
       description: "워크스페이스를 보려면 사이드바 필터를 변경하거나 지우세요.",
       clear: "필터 지우기",
+    },
+    recents: {
+      title: "최근 대화",
+      empty: "메시지를 보내면 여기에 대화가 표시됩니다.",
+      untitled: "제목 없는 대화",
     },
     pinned: {
       title: "고정됨",

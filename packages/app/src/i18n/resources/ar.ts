@@ -90,6 +90,16 @@ export const ar: TranslationResources = {
       close: "إغلاق القائمة",
     },
     commandCenter: {
+      quick: "سريع",
+      deep: "عميق",
+      deepPlaceholder: "البحث في رسائل المحادثات…",
+      searchingConversations: "جارٍ البحث في المحادثات…",
+      deepDescription: "يبحث في العناوين وآخر 60 رسالة لكل محادثة.",
+      includeArchived: "تضمين المحادثات المؤرشفة",
+      deepUnavailable: "البحث في المحادثات غير متاح على هذا المضيف.",
+      deepTooLong: "استخدم 300 حرف أو أقل.",
+      deepCoverage: "تمت فهرسة {{indexed}}/{{total}} محادثة · {{unavailable}} بالعنوان فقط",
+      deepIndexing: "جارٍ فهرسة {{indexed}}/{{total}} محادثة · {{unavailable}} بالعنوان فقط",
       placeholder: "ابحث في الأوامر والملفات ومساحات العمل والوكلاء...",
       filePlaceholder: "البحث في الملفات...",
       searchingFiles: "جارٍ البحث في الملفات...",
@@ -1214,6 +1224,7 @@ export const ar: TranslationResources = {
         updateHost: "حدّث المضيفين لترتيب مساحات العمل",
       },
       grouping: {
+        statusThemes: "الحالة → التسميات",
         label: "التجميع",
         project: "المشروع",
         status: "الحالة",
@@ -1254,6 +1265,11 @@ export const ar: TranslationResources = {
       title: "لا توجد مساحات عمل مطابقة",
       description: "غيّر عوامل تصفية الشريط الجانبي أو امسحها لعرض مساحات العمل.",
       clear: "مسح عوامل التصفية",
+    },
+    recents: {
+      title: "الأخيرة",
+      empty: "تظهر المحادثات هنا بعد إرسال رسالة.",
+      untitled: "محادثة بلا عنوان",
     },
     pinned: {
       title: "المثبتة",

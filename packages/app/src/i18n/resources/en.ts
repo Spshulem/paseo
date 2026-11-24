@@ -86,6 +86,16 @@ export const en = {
       close: "Close menu",
     },
     commandCenter: {
+      quick: "Quick",
+      deep: "Deep",
+      deepPlaceholder: "Search conversation messages…",
+      searchingConversations: "Searching conversations…",
+      deepDescription: "Searches titles and up to 60 recent messages per chat.",
+      includeArchived: "Include archived chats",
+      deepUnavailable: "Conversation search is not available on this host.",
+      deepTooLong: "Use 300 characters or fewer.",
+      deepCoverage: "{{indexed}}/{{total}} chats indexed · {{unavailable}} title-only",
+      deepIndexing: "Indexing {{indexed}}/{{total}} chats · {{unavailable}} title-only",
       placeholder: "Search commands, files, workspaces, and agents...",
       filePlaceholder: "Search files...",
       searchingFiles: "Searching files...",
@@ -1141,7 +1151,7 @@ export const en = {
   },
   workspaceLabels: {
     title: "Labels",
-    unlabelled: "Unlabelled",
+    unlabelled: "Uncategorized",
     create: "Create label",
     createConfirm: "Create",
     creating: "Creating…",
@@ -1222,6 +1232,7 @@ export const en = {
         updateHost: "Update hosts to sort workspaces",
       },
       grouping: {
+        statusThemes: "Status → Themes",
         label: "Grouping",
         project: "Project",
         status: "Status",
@@ -1262,6 +1273,11 @@ export const en = {
       title: "No workspaces match",
       description: "Change or clear the sidebar filters to see workspaces.",
       clear: "Clear filters",
+    },
+    recents: {
+      title: "Recents",
+      empty: "Chats appear here after you send a message.",
+      untitled: "Untitled chat",
     },
     pinned: {
       title: "Pinned",

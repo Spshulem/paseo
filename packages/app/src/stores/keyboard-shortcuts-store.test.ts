@@ -39,4 +39,13 @@ describe("keyboard-shortcuts-store", () => {
     useKeyboardShortcutsStore.getState().setCapturingShortcut(true);
     expect(useKeyboardShortcutsStore.getState().capturingShortcut).toBe(true);
   });
+  it("returns to Quick search when reopened after Deep search", () => {
+    const store = useKeyboardShortcutsStore.getState();
+    store.setCommandCenterOpen(true);
+    store.setCommandCenterScope("deep");
+    expect(useKeyboardShortcutsStore.getState().commandCenterScope).toBe("deep");
+    store.setCommandCenterOpen(false);
+    store.setCommandCenterOpen(true);
+    expect(useKeyboardShortcutsStore.getState().commandCenterScope).toBeNull();
+  });
 });

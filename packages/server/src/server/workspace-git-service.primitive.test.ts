@@ -2187,10 +2187,10 @@ describe("WorkspaceGitServiceImpl D2 read methods", () => {
     try {
       const subscription = await service.requestWorkingTreeWatch(repoDir, vi.fn());
 
-      const ignoredRoot = join(repoDir, "ignored");
       expect(subscribe).toHaveBeenCalledTimes(1);
       expect(subscribe).toHaveBeenCalledWith(repoDir, expect.any(Function), {
-        ignore: [join(repoDir, ".git"), ignoredRoot],
+        ignore: [join(repoDir, ".git")],
+        initialScan: false,
       });
 
       subscription.unsubscribe();

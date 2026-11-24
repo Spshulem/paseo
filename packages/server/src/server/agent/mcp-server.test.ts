@@ -964,6 +964,55 @@ describe("bundled Paseo skill", () => {
   });
 });
 
+describe("lazy Paseo MCP tools", () => {
+  it("advertises only the discovery router and executes a discovered tool", async () => {
+    const server = await createAgentMcpServer({
+      agentManager: new BoundaryAgentManagerFake() as AgentManager,
+      agentStorage: new BoundaryAgentStorageFake() as AgentStorage,
+      providerSnapshotManager:
+        new BoundaryProviderSnapshotManagerFake() as unknown as ProviderSnapshotManager,
+      callerAgentId: "agent-1",
+      lazyToolLoading: true,
+      logger: createTestLogger(),
+    });
+    const client = await connectInMemoryMcpClient(server);
+
+    try {
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name)).toEqual([
+        "paseo_tool_search",
+        "paseo_tool_call",
+      ]);
+
+      const search = await client.callTool({
+        name: "paseo_tool_search",
+        arguments: { query: "list agents", limit: 1 },
+      });
+      const discovered = z
+        .object({
+          tools: z.array(
+            z.object({
+              name: z.string(),
+              description: z.string(),
+              inputSchema: z.record(z.string(), z.unknown()),
+            }),
+          ),
+        })
+        .parse(search.structuredContent);
+      expect(discovered.tools[0]?.name).toBe("list_agents");
+
+      const call = await client.callTool({
+        name: "paseo_tool_call",
+        arguments: { name: "list_agents", arguments: {} },
+      });
+      expect(call.structuredContent).toEqual({ agents: [] });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+});
+
 describe("Paseo tool timeline presentation", () => {
   it("catalogs a timeline label for every advertised tool", async () => {
     const server = await createAgentMcpServer({

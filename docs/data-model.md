@@ -438,6 +438,18 @@ One file per schedule. ID is 8 hex characters.
 
 Array of project records.
 
+Never edit registries while the daemon runs. Each process caches them; later mutations persist
+that cache over external edits. Validation covers the whole array, so one invalid record can
+leave the loaded registry empty. A missing project also hides its workspaces and chats from
+placement-based listings even when every agent file is valid. Adding the same root allocates a
+new ID and does not repair existing references.
+
+For damaged membership, preview `packages/server/scripts/recover-workspace-projects.ts` with
+`--home`, `--backup` (a known-good workspace registry), and `--out`. Review reconstructed project
+roots and metadata before applying. Stop the daemon with permission, then use `--home` and
+`--apply <plan>`; the command snapshots the registries and uses their store APIs. Preserve the
+original agent files and IDs. Restart only after verifying every workspace references a project.
+
 | Field                | Type                        | Description                                                                                                                                |
 | -------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `projectId`          | `string`                    | Host-local primary key; new records use opaque `prj_<16 hex>` IDs                                                                          |

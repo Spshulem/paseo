@@ -381,7 +381,8 @@ semantics, and environment-variable overrides.
 
 ### Agent Tool Catalog Measurement
 
-Measure the MCP `tools/list` payload that Paseo injects into agents with:
+Measure the MCP `tools/list` payload that Paseo injects into agents, including the full catalog
+baseline and lazy discovery surface, with:
 
 ```bash
 npm run measure:agent-tools --workspace=@getpaseo/server
