@@ -4889,7 +4889,7 @@ export class AgentManager {
     broadcast: boolean | (() => boolean),
     history:
       | AsyncIterable<AgentStreamEvent>
-      | Iterable<AgentStreamEvent> = agent.session.streamHistory(),
+      | Iterable<AgentStreamEvent> = agent.session.streamHistory({ backgroundSubagents: true }),
   ): Promise<void> {
     const deferredBroadcast = typeof broadcast === "function";
     const historyEvents: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
@@ -4952,6 +4952,8 @@ export class AgentManager {
       }
     }
     agent.historyPrimed = true;
+    this.refreshSessionPersistence(agent);
+    await this.persistSnapshot(agent);
 
     if (typeof broadcast !== "function" || !broadcast()) {
       return;

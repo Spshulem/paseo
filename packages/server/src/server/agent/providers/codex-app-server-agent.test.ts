@@ -102,6 +102,246 @@ import { asInternals as castInternals, createStub } from "../../test-utils/class
 import { AgentManager } from "../agent-manager.js";
 import { buildProviderRegistry } from "../provider-registry.js";
 
+describe("Codex parent-first history", () => {
+  test.each(["interactive", "history"] as const)(
+    "serves parent history before slow subagent history and delivers the child afterward (%s)",
+    async (purpose) => {
+      let releaseChild!: (value: unknown) => void;
+      let markChildRequested!: () => void;
+      let markChildDelivered!: () => void;
+      const childResponse = new Promise<unknown>((resolve) => {
+        releaseChild = resolve;
+      });
+      const childRequested = new Promise<void>((resolve) => {
+        markChildRequested = resolve;
+      });
+      const childDelivered = new Promise<void>((resolve) => {
+        markChildDelivered = resolve;
+      });
+      const childHistory = {
+        thread: { turns: [{ id: "child-turn", items: [codexAgentItem("Child retained.")] }] },
+      };
+      const appServer = createFakeCodexAppServer({
+        "thread/read": (value) => {
+          const params = value as { threadId: string; includeTurns?: boolean };
+          if (!params.includeTurns) return { thread: { historyMode: "legacy" } };
+          if (params.threadId === "child-thread") {
+            markChildRequested();
+            return childResponse;
+          }
+          return {
+            thread: {
+              turns: [
+                {
+                  id: "parent-turn",
+                  items: [
+                    codexUserItem("parent-user", "Parent retained."),
+                    {
+                      type: "subAgentActivity",
+                      id: "spawn-child",
+                      kind: "started",
+                      agentThreadId: "child-thread",
+                      agentPath: "/root/child",
+                    },
+                  ],
+                },
+              ],
+            },
+          };
+        },
+      });
+      const session = await createProviderWithFakeAppServer(appServer).resumeSession(
+        { sessionId: "saved-thread" },
+        undefined,
+        undefined,
+        { purpose },
+      );
+      const observed: AgentStreamEvent[] = [];
+      session.subscribe((event) => {
+        observed.push(event);
+        if (
+          event.type === "provider_subagent" &&
+          event.event.type === "timeline" &&
+          event.event.item.type === "assistant_message" &&
+          event.event.item.text === "Child retained."
+        ) {
+          markChildDelivered();
+        }
+      });
+      const parent: AgentStreamEvent[] = [];
+      let parentComplete = false;
+      const read = (async () => {
+        for await (const event of session.streamHistory({ backgroundSubagents: true }))
+          parent.push(event);
+        parentComplete = true;
+      })();
+      try {
+        await childRequested;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(parentComplete).toBe(true);
+        expect(parent).toContainEqual(
+          expect.objectContaining({
+            type: "timeline",
+            item: expect.objectContaining({ type: "user_message", text: "Parent retained." }),
+          }),
+        );
+        expect(session.describePersistence?.()?.metadata).toMatchObject({
+          codexHistoryChildrenPending: true,
+        });
+        await expect(session.canStopRuntime?.()).resolves.toBe(false);
+        releaseChild(childHistory);
+        await childDelivered;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(session.describePersistence?.()?.metadata).not.toHaveProperty(
+          "codexHistoryChildrenPending",
+        );
+        expect(
+          observed.filter(
+            (event) =>
+              event.type === "provider_subagent" &&
+              event.event.type === "timeline" &&
+              event.event.item.type === "assistant_message",
+          ),
+        ).toHaveLength(1);
+        await read;
+      } finally {
+        releaseChild(childHistory);
+        await read;
+        await session.close();
+        appServer.assertNoErrors();
+      }
+    },
+  );
+});
+
+describe("Codex history replay compatibility", () => {
+  test("keeps child history in standalone imports without background replay", async () => {
+    const histories: Record<string, unknown[]> = {
+      "saved-thread": [
+        {
+          id: "parent-turn",
+          items: [
+            codexUserItem("parent", "Parent history."),
+            {
+              type: "subAgentActivity",
+              id: "spawn-child",
+              kind: "started",
+              agentThreadId: "child-thread",
+              agentPath: "/root/child",
+            },
+          ],
+        },
+      ],
+      "child-thread": [{ id: "child-turn", items: [codexAgentItem("Child history.")] }],
+    };
+    const appServer = createFakeCodexAppServer({
+      "thread/read": (params) => ({
+        thread: { turns: histories[(params as { threadId: string }).threadId] },
+      }),
+    });
+    const session = await createProviderWithFakeAppServer(appServer).resumeSession({
+      sessionId: "saved-thread",
+    });
+    try {
+      const events: AgentStreamEvent[] = [];
+      for await (const event of session.streamHistory()) events.push(event);
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "provider_subagent",
+          event: expect.objectContaining({
+            type: "timeline",
+            id: "child-thread",
+            item: expect.objectContaining({ type: "assistant_message", text: "Child history." }),
+          }),
+        }),
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "timeline",
+          item: expect.objectContaining({ type: "user_message", text: "Parent history." }),
+        }),
+      );
+    } finally {
+      await session.close();
+      appServer.assertNoErrors();
+    }
+  });
+
+  test("resumes an interrupted child replay even when the parent is already cached", async () => {
+    let releaseChild!: (value: unknown) => void;
+    let markRequested!: () => void;
+    let markDelivered!: () => void;
+    const child = new Promise<unknown>((resolve) => {
+      releaseChild = resolve;
+    });
+    const requested = new Promise<void>((resolve) => {
+      markRequested = resolve;
+    });
+    const delivered = new Promise<void>((resolve) => {
+      markDelivered = resolve;
+    });
+    const childHistory = {
+      thread: { turns: [{ id: "child-turn", items: [codexAgentItem("Recovered child.")] }] },
+    };
+    const appServer = createFakeCodexAppServer({
+      "thread/read": (value) => {
+        const params = value as { threadId: string; includeTurns?: boolean };
+        if (!params.includeTurns) return { thread: { historyMode: "legacy" } };
+        if (params.threadId === "child-thread") {
+          markRequested();
+          return child;
+        }
+        return {
+          thread: {
+            turns: [
+              {
+                id: "parent-turn",
+                items: [
+                  {
+                    type: "subAgentActivity",
+                    id: "spawn-child",
+                    kind: "started",
+                    agentThreadId: "child-thread",
+                    agentPath: "/root/child",
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      },
+    });
+    const session = await createProviderWithFakeAppServer(appServer).resumeSession({
+      sessionId: "saved-thread",
+      metadata: { codexHistoryChildrenPending: true },
+    });
+    session.subscribe((event) => {
+      if (
+        event.type === "provider_subagent" &&
+        event.event.type === "timeline" &&
+        event.event.item.type === "assistant_message" &&
+        event.event.item.text === "Recovered child."
+      )
+        markDelivered();
+    });
+    try {
+      await requested;
+      await expect(session.getRuntimeInfo()).resolves.toMatchObject({ sessionId: "saved-thread" });
+      releaseChild(childHistory);
+      await delivered;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(session.describePersistence()?.metadata).not.toHaveProperty(
+        "codexHistoryChildrenPending",
+      );
+      expect(appServer.requests().some((request) => request.method === "turn/start")).toBe(false);
+    } finally {
+      releaseChild(childHistory);
+      await session.close();
+      appServer.assertNoErrors();
+    }
+  });
+});
+
 interface CollaborationModeRecord {
   name: string;
   mode?: string | null;
@@ -2158,6 +2398,8 @@ describe("Codex app-server provider", () => {
       purpose: "history",
     });
 
+    expect(threadRequests).toEqual([]);
+    for await (const event of session.streamHistory()) void event;
     expect(threadRequests).toEqual(["thread/read", "thread/read"]);
     await session.close();
     appServer.assertNoErrors();
@@ -2366,9 +2608,15 @@ describe("Codex app-server provider", () => {
     const killSpy = vi.spyOn(appServer.child, "kill");
     const provider = createProviderWithFakeAppServer(appServer);
 
+    const session = await provider.resumeSession(archivedThreadHandle(), undefined, undefined, {
+      purpose: "history",
+    });
     await expect(
-      provider.resumeSession(archivedThreadHandle(), undefined, undefined, { purpose: "history" }),
+      (async () => {
+        for await (const event of session.streamHistory()) void event;
+      })(),
     ).rejects.toThrow("thread history is unavailable");
+    await session.close();
 
     expect(killSpy).toHaveBeenCalledWith("SIGTERM");
     appServer.assertNoErrors();

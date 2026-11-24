@@ -687,6 +687,11 @@ export interface AgentUsageSession {
   sessionKey: string;
 }
 
+export interface AgentHistoryReplayOptions {
+  /** The consumer is subscribed and can receive historical child events after the parent. */
+  backgroundSubagents?: boolean;
+}
+
 export interface AgentSession {
   usageSession?(): AgentUsageSession | null;
   readonly provider: AgentProvider;
@@ -708,7 +713,7 @@ export interface AgentSession {
   startTurn(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<{ turnId: string }>;
   steerActiveTurn?(prompt: AgentPromptInput, options: SteerActiveTurnOptions): Promise<SteerResult>;
   subscribe(callback: (event: AgentStreamEvent) => void): () => void;
-  streamHistory(): AsyncGenerator<AgentStreamEvent>;
+  streamHistory(options?: AgentHistoryReplayOptions): AsyncGenerator<AgentStreamEvent>;
   getRuntimeInfo(): Promise<AgentRuntimeInfo>;
   getAvailableModes(): Promise<AgentMode[]>;
   getCurrentMode(): Promise<string | null>;
