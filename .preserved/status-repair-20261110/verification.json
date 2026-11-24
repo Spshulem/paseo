@@ -1,0 +1,53 @@
+{
+  "owner": "Paseo stale workspace status repair",
+  "startedAt": "2026-11-10T13:52:22.065773+00:00",
+  "phase": "verified",
+  "checks": {
+    "install": {
+      "exitCode": 0,
+      "log": "install.log"
+    },
+    "baseline-build": {
+      "exitCode": 0,
+      "log": "baseline-build.log"
+    },
+    "tests-patch": {
+      "exitCode": 0,
+      "log": "tests-patch.log"
+    },
+    "regression-before": {
+      "exitCode": 1,
+      "log": "regression-before.log"
+    },
+    "production-patch": {
+      "exitCode": 0,
+      "log": "production-patch.log"
+    },
+    "format": {
+      "exitCode": 0,
+      "log": "format.log"
+    },
+    "regression-after": {
+      "exitCode": 0,
+      "log": "regression-after.log"
+    },
+    "patched-build": {
+      "exitCode": 0,
+      "log": "patched-build.log"
+    },
+    "typecheck": {
+      "exitCode": 0,
+      "log": "typecheck.log"
+    },
+    "lint": {
+      "exitCode": 0,
+      "log": "lint.log"
+    }
+  },
+  "sharedDaemonChanged": false,
+  "finishedAt": "2026-11-10T13:54:01.362038+00:00",
+  "sourceHashes": {
+    "packages/server/src/server/agent/providers/claude/subagents/replay-source.ts": "f2051a4b7c16d88515c6d037d26603c7f98985c10731b41f99b5e46c1218ee41",
+    "packages/server/src/server/agent/providers/claude/subagents/replay-source.test.ts": "75b7cfc90e1cf2269c96db496c6ba839f1a42dfed63acf5a89220136eb86b2f2"
+  }
+}

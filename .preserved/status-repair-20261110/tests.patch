@@ -1,0 +1,53 @@
+diff --git a/packages/server/src/server/agent/providers/claude/subagents/replay-source.test.ts b/packages/server/src/server/agent/providers/claude/subagents/replay-source.test.ts
+index fc48e9d..c80ecaf 100644
+--- a/packages/server/src/server/agent/providers/claude/subagents/replay-source.test.ts
++++ b/packages/server/src/server/agent/providers/claude/subagents/replay-source.test.ts
+@@ -368,7 +368,7 @@ describe("observeReplaySubagents", () => {
+     expect(descriptor).toMatchObject({ status: "completed" });
+   });
+ 
+-  it("leaves a subagent with no recorded outcome running", async () => {
++  it("marks a replayed subagent with no recorded outcome as interrupted", async () => {
+     const observations = (
+       await observeReplaySubagents({
+         subagents: [{ agentId: AGENT_ID, meta: { toolUseId: TOOL_USE_ID }, entries: [] }],
+@@ -376,7 +376,38 @@ describe("observeReplaySubagents", () => {
+         convertEntry: () => [],
+       })
+     ).observations;
+-    expect(observations.some((o) => o.kind === "status")).toBe(false);
++    expect(applyToStore(observations)).toMatchObject({ status: "canceled" });
++  });
++
++  it("does not turn an interrupted historical tool call into a live worker", async () => {
++    const { observations } = await observeReplaySubagents({
++      subagents: [
++        {
++          agentId: AGENT_ID,
++          meta: { toolUseId: TOOL_USE_ID },
++          entries: [
++            {
++              type: "assistant",
++              timestamp: "2026-09-27T05:21:35.952Z",
++              message: { stop_reason: "tool_use", content: [] },
++            },
++            {
++              type: "user",
++              timestamp: "2026-09-27T05:21:36.094Z",
++              message: { content: [{ type: "tool_result", content: "done" }] },
++            },
++            { type: "attachment", timestamp: "2026-09-27T05:21:36.107Z" },
++          ],
++        },
++      ],
++      parent: { ...parentWithTaskCall(), outcomesByToolCallId: new Map() },
++      convertEntry: () => [],
++    });
++
++    expect(applyToStore(observations)).toMatchObject({
++      status: "canceled",
++      updatedAt: "2026-09-27T05:21:36.107Z",
++    });
+   });
+ 
+   it("reports a failed outcome as failed", async () => {

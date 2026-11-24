@@ -288,15 +288,15 @@ async function observeSubagent(
   const subtitle = observeSubtitle(link, title, runtime, usage, lastTimestamp);
   if (subtitle) observations.push(subtitle);
   for (const observation of timeline) observations.push(observation);
-  const terminalStatus = link.status ?? childTerminalStatus;
-  if (terminalStatus) {
-    observations.push({
-      kind: "status",
-      id: link.id,
-      status: terminalStatus,
-      ...(lastTimestamp ? { timestamp: lastTimestamp } : {}),
-    });
-  }
+  // A transcript can preserve an unfinished child, but cannot preserve its executor.
+  // A resumed live task will announce itself through the task protocol again.
+  const terminalStatus = link.status ?? childTerminalStatus ?? "canceled";
+  observations.push({
+    kind: "status",
+    id: link.id,
+    status: terminalStatus,
+    ...(lastTimestamp ? { timestamp: lastTimestamp } : {}),
+  });
   return observations;
 }
 
