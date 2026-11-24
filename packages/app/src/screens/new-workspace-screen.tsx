@@ -66,6 +66,7 @@ import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { toErrorMessage } from "@/utils/error-messages";
 import {
   getHostProjectId,
+  getHostProjectSourceDirectory,
   getWorktreeSupportForHostProject,
   hostProjectFromRoute,
   hostProjectFromWorkspace,
@@ -186,12 +187,29 @@ function buildFirstAgentContext(input: {
   };
 }
 
-interface NewWorkspaceScreenProps {
+export interface NewWorkspacePlacement {
   serverId: string;
   sourceDirectory?: string;
   projectId?: string;
   displayName?: string;
+}
+
+interface NewWorkspaceScreenProps extends NewWorkspacePlacement {
   draftId?: string;
+  /** Mirrors a placement the user chose into the route, so a reload restores it. */
+  onPlacementChange: (placement: NewWorkspacePlacement) => void;
+}
+
+function placementForProject(
+  serverId: string,
+  project: HostProjectListItem,
+): NewWorkspacePlacement {
+  return {
+    serverId,
+    projectId: getHostProjectId(project, serverId) ?? undefined,
+    sourceDirectory: getHostProjectSourceDirectory(project, serverId) ?? undefined,
+    displayName: project.projectName,
+  };
 }
 
 // A terminal launch sends argv, not a message: there is nothing to attach and
@@ -807,6 +825,8 @@ function useNewWorkspaceHostSelector(input: {
     [routeServerId],
   );
 
+  const hasManualHostSelection = manualSelection?.serverId === selectedServerId;
+
   const handleHostPickerOpenChange = useCallback((open: boolean) => {
     setHostPickerOpen(open);
   }, []);
@@ -817,6 +837,7 @@ function useNewWorkspaceHostSelector(input: {
 
   return {
     selectedServerId,
+    hasManualHostSelection,
     hostPickerOpen,
     handleSelectHost,
     handleHostPickerOpenChange,
@@ -827,6 +848,7 @@ function useNewWorkspaceHostSelector(input: {
 interface NewWorkspaceInitialContextState {
   allHosts: HostProfile[];
   selectedServerId: string;
+  hasManualHostSelection: boolean;
   hostPickerOpen: boolean;
   handleSelectHost: (id: string) => void;
   handleHostPickerOpenChange: (open: boolean) => void;
@@ -842,7 +864,7 @@ function useNewWorkspaceInitialContext({
   sourceDirectory: sourceDirectoryProp,
   projectId,
   displayName: displayNameProp,
-}: NewWorkspaceScreenProps): NewWorkspaceInitialContextState {
+}: NewWorkspacePlacement): NewWorkspaceInitialContextState {
   const allHosts = useHosts();
   const allServerIds = useMemo(() => allHosts.map((h) => h.serverId), [allHosts]);
   const projects = useHostProjects(allServerIds);
@@ -888,6 +910,7 @@ function useNewWorkspaceInitialContext({
   const workspaceMultiplicityByServerId = useHostFeatureMap(allServerIds, "workspaceMultiplicity");
   const {
     selectedServerId,
+    hasManualHostSelection,
     hostPickerOpen,
     handleSelectHost,
     handleHostPickerOpenChange,
@@ -904,6 +927,7 @@ function useNewWorkspaceInitialContext({
   return {
     allHosts,
     selectedServerId,
+    hasManualHostSelection,
     hostPickerOpen,
     handleSelectHost,
     handleHostPickerOpenChange,
@@ -915,12 +939,39 @@ function useNewWorkspaceInitialContext({
   };
 }
 
+const EMPTY_WORKSPACE_CREATION_RESULT = { workspace: null } as const;
+
+// The created workspace belongs to its destination: returning to a project reuses the workspace
+// already created there, and a retry on another project creates that project's own workspace.
+function useWorkspaceCreationResults(input: {
+  serverId: string;
+  project: HostProjectListItem | null;
+  sourceDirectory: string | null;
+}) {
+  const projectId = input.project ? getHostProjectId(input.project, input.serverId) : null;
+  const destinationKey = JSON.stringify([input.serverId, projectId, input.sourceDirectory]);
+  const [resultsByDestination, setResultsByDestination] = useState<
+    ReadonlyMap<string, WorkspaceCreationResult>
+  >(() => new Map());
+  const setCreationResult = useCallback(
+    (result: WorkspaceCreationResult) => {
+      setResultsByDestination((current) => new Map(current).set(destinationKey, result));
+    },
+    [destinationKey],
+  );
+  return {
+    creationResult: resultsByDestination.get(destinationKey) ?? EMPTY_WORKSPACE_CREATION_RESULT,
+    setCreationResult,
+  };
+}
+
 export function NewWorkspaceScreen({
   serverId,
   sourceDirectory: sourceDirectoryProp,
   projectId,
   displayName: displayNameProp,
   draftId,
+  onPlacementChange,
 }: NewWorkspaceScreenProps) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
@@ -937,6 +988,7 @@ export function NewWorkspaceScreen({
   const {
     allHosts,
     selectedServerId,
+    hasManualHostSelection,
     hostPickerOpen,
     handleSelectHost,
     handleHostPickerOpenChange,
@@ -959,9 +1011,6 @@ export function NewWorkspaceScreen({
     worktreeSlug: createNameId(),
   }));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [creationResult, setCreationResult] = useState<
-    WorkspaceCreationResult | { workspace: null }
-  >({ workspace: null });
   const [pendingAction, setPendingAction] = useState<"chat" | "empty" | "terminal" | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
@@ -1027,12 +1076,12 @@ export function NewWorkspaceScreen({
     return () => clearTimeout(timer);
   }, [pickerSearchQuery]);
 
-  const { workspace } = creationResult;
   const client = useHostRuntimeClient(selectedServerId);
   const isConnected = useHostRuntimeIsConnected(selectedServerId);
   const {
     selectedProject,
     selectedSourceDirectory,
+    hasManualProjectSelection,
     projectPickerOptions,
     projectByOptionId,
     selectedProjectOptionId,
@@ -1046,6 +1095,26 @@ export function NewWorkspaceScreen({
     lastActiveProject,
     allowAllProjects: supportsWorkspaceMultiplicity,
   });
+  const { creationResult, setCreationResult } = useWorkspaceCreationResults({
+    serverId: selectedServerId,
+    project: selectedProject,
+    sourceDirectory: selectedSourceDirectory,
+  });
+  const { workspace } = creationResult;
+  // Publish only a complete placement: a host chosen before its project resolves has nothing
+  // to restore yet, and the route keeps naming the last complete one until it does.
+  useEffect(() => {
+    if (!hasManualHostSelection && !hasManualProjectSelection) return;
+    if (!selectedProject || !selectedSourceDirectory) return;
+    onPlacementChange(placementForProject(selectedServerId, selectedProject));
+  }, [
+    hasManualHostSelection,
+    hasManualProjectSelection,
+    onPlacementChange,
+    selectedProject,
+    selectedServerId,
+    selectedSourceDirectory,
+  ]);
   const projectIconTargets = useMemo(
     () => buildNewWorkspaceProjectIconTargets(projects, selectedServerId),
     [projects, selectedServerId],
@@ -1395,6 +1464,7 @@ export function NewWorkspaceScreen({
       selectedProject,
       selectedServerId,
       selectedSourceDirectory,
+      setCreationResult,
       setup,
       supportsWorkspaceMultiplicity,
       t,
