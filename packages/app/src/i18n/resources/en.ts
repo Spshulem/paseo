@@ -1303,7 +1303,6 @@ export const en = {
     },
     recents: {
       title: "Recents",
-      empty: "Chats appear here after you send a message.",
       untitled: "Untitled chat",
     },
     pinned: {

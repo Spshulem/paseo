@@ -1299,7 +1299,6 @@ export const ko: TranslationResources = {
     },
     recents: {
       title: "최근 대화",
-      empty: "메시지를 보내면 여기에 대화가 표시됩니다.",
       untitled: "제목 없는 대화",
     },
     pinned: {

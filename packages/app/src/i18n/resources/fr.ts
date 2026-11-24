@@ -1323,7 +1323,6 @@ export const fr: TranslationResources = {
     },
     recents: {
       title: "Récents",
-      empty: "Les discussions apparaissent ici après l’envoi d’un message.",
       untitled: "Discussion sans titre",
     },
     pinned: {

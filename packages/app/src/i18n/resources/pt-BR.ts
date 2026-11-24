@@ -1319,7 +1319,6 @@ export const ptBR: TranslationResources = {
     },
     recents: {
       title: "Recentes",
-      empty: "As conversas aparecem aqui depois que você envia uma mensagem.",
       untitled: "Conversa sem título",
     },
     pinned: {

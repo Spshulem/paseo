@@ -34,6 +34,9 @@ export function SidebarRecentsSection({ onChatPress }: { onChatPress?: () => voi
   const toggleCollapsed = useCallback(() => toggle(RECENTS_SECTION_KEY), [toggle]);
   const toggleShowAll = useCallback(() => setShowAll((value) => !value), []);
 
+  // An empty section would only push the workspace list down; it appears with the first chat.
+  if (recents.length === 0) return null;
+
   return (
     <View style={styles.section} testID="sidebar-recents-section">
       <SidebarSectionHeader
@@ -47,9 +50,6 @@ export function SidebarRecentsSection({ onChatPress }: { onChatPress?: () => voi
           {(showAll ? recents : recents.slice(0, 5)).map((chat) => (
             <RecentConversationRow key={chat.key} chat={chat} onChatPress={onChatPress} />
           ))}
-          {recents.length === 0 ? (
-            <Text style={styles.empty}>{t("sidebar.recents.empty")}</Text>
-          ) : null}
           {recents.length > 5 ? (
             <SidebarGroupToggleRow
               expanded={showAll}
@@ -125,9 +125,4 @@ const styles = StyleSheet.create((theme) => ({
   content: { flex: 1, minWidth: 0, gap: theme.spacing[0.5] },
   title: { fontSize: theme.fontSize.base, color: theme.colors.foreground },
   context: { fontSize: theme.fontSize.sm, color: theme.colors.foregroundMuted },
-  empty: {
-    padding: theme.spacing[2],
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foregroundMuted,
-  },
 }));

@@ -1284,7 +1284,6 @@ export const zhCN: TranslationResources = {
     },
     recents: {
       title: "最近聊天",
-      empty: "发送消息后，聊天会显示在这里。",
       untitled: "无标题聊天",
     },
     pinned: {

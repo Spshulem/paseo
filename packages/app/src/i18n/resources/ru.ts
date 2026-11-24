@@ -1314,7 +1314,6 @@ export const ru: TranslationResources = {
     },
     recents: {
       title: "Недавние",
-      empty: "Чаты появятся здесь после отправки сообщения.",
       untitled: "Чат без названия",
     },
     pinned: {

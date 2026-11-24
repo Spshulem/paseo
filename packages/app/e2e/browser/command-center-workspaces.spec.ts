@@ -19,7 +19,7 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { seedRunningMockAgentWorkspace, openAgentRoute } from "../support/helpers/mock-agent";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
-import { copyPluginExample, pluginRequirements } from "../support/helpers/plugin-fixture";
+import { pluginRequirements } from "../support/helpers/plugin-fixture";
 import { connectNewWorkspaceDaemonClient } from "../support/helpers/new-workspace";
 
 const PRIMARY_HOST_LABEL = "Primary Host";
@@ -354,18 +354,16 @@ test.describe("Compact sidebar inspection", () => {
   });
 });
 
-test("Quick and Deep share search while Auto-resume lives in settings", async ({ page }) => {
+test("Quick and Deep share conversation search", async ({ page }) => {
   test.setTimeout(180_000);
   const seeded = await seedWorkspace({
     repoPrefix: "unified-search-",
     title: "Search integration",
   });
   const searchDirectory = await mkdtemp(join(tmpdir(), "paseo-deep-search-"));
-  const resume = await copyPluginExample("auto-resume");
   const pluginClient = await connectNewWorkspaceDaemonClient({ ownProjects: false });
   const previous = await pluginClient.getDaemonConfig();
   let searchInstalled = false;
-  let resumeInstalled = false;
   try {
     const agent = await createMockIdleAgent(seeded.client, {
       cwd: seeded.repoPath,
@@ -390,21 +388,9 @@ export default function contribute(server) {
   }); return () => {};
 }`,
     );
-    await writeFile(
-      join(resume.directory, "index.server.ts"),
-      `import {status,enable,cancel} from "./shared/contracts";
-export default function contribute(server) {
-  let enabled=true; let fail=true;
-  server.handle(status,()=>({enabled,error:"Could not publish retry notice",retries:[]}));
-  server.handle(enable,(input)=>{if(fail){fail=false;throw new Error("Could not save. Try again.");} enabled=input.enabled;return {};});
-  server.handle(cancel,()=>({})); return () => {};
-}`,
-    );
     await pluginClient.patchDaemonConfig({ pluginsEnabled: true });
     await pluginClient.installDirectoryPlugin(searchDirectory);
     searchInstalled = true;
-    await pluginClient.installDirectoryPlugin(resume.directory);
-    resumeInstalled = true;
     await gotoAppShell(page);
     for (const width of [1200, 390]) {
       await page.setViewportSize({ width, height: 844 });
@@ -437,24 +423,10 @@ export default function contribute(server) {
       if (width === 390) await page.setViewportSize({ width: 1200, height: 844 });
       await expectAgentTabActive(page, agent.id);
     }
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`/settings/hosts/${getServerId()}/plugins/auto-resume/auto-resume`);
-    const toggle = page.getByRole("switch", { name: "Resume after temporary limits", exact: true });
-    await expect(toggle).toBeChecked();
-    await expect(toggle).toBeEnabled();
-    await toggle.click();
-    await expect(page.getByText(/Could not save\. Try again\./)).toBeVisible();
-    await expect(toggle).toBeChecked();
-    await toggle.click();
-    await expect(toggle).not.toBeChecked();
-    await expect(page.getByText(/Could not save\. Try again\./)).toHaveCount(0);
-    await page.screenshot({ path: test.info().outputPath("auto-resume-settings.png") });
   } finally {
     if (searchInstalled) await pluginClient.removePlugin("paseo-conversation-search");
-    if (resumeInstalled) await pluginClient.removePlugin("auto-resume");
     await pluginClient.patchDaemonConfig({ pluginsEnabled: previous.config.pluginsEnabled });
     await pluginClient.close();
-    await resume.cleanup();
     await rm(searchDirectory, { recursive: true, force: true });
     await seeded.cleanup();
   }

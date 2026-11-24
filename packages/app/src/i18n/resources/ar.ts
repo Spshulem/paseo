@@ -1292,7 +1292,6 @@ export const ar: TranslationResources = {
     },
     recents: {
       title: "الأخيرة",
-      empty: "تظهر المحادثات هنا بعد إرسال رسالة.",
       untitled: "محادثة بلا عنوان",
     },
     pinned: {

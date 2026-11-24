@@ -1329,7 +1329,6 @@ export const es: TranslationResources = {
     },
     recents: {
       title: "Recientes",
-      empty: "Los chats aparecen aquí después de enviar un mensaje.",
       untitled: "Chat sin título",
     },
     pinned: {

@@ -1307,7 +1307,6 @@ export const ja: TranslationResources = {
     },
     recents: {
       title: "最近のチャット",
-      empty: "メッセージを送信すると、ここにチャットが表示されます。",
       untitled: "無題のチャット",
     },
     pinned: {
