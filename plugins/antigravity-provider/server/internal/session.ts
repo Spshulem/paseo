@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { z } from "zod";
 import type {
   ProviderCatalog,
@@ -15,6 +16,7 @@ import { startDriver, selection, type Driver } from "./process.js";
 import { validateSelection } from "./catalog.js";
 import { PromptFiles } from "./prompt.js";
 import { toolItem } from "./timeline.js";
+import { readHistory } from "./history.js";
 import { AntigravityError, diagnostic, type Frame, type Step } from "./wire.js";
 
 const persistenceSchema = z
@@ -60,7 +62,11 @@ export class Session {
     validateSelection(this.config, options.catalog());
   }
 
-  async open(requestId: string, capabilities: readonly string[]): Promise<void> {
+  async open(
+    requestId: string,
+    capabilities: readonly string[],
+    history: "replay" | "skip",
+  ): Promise<void> {
     await this.ensureDriver();
     this.emit({
       type: "session.opened",
@@ -75,6 +81,12 @@ export class Session {
     this.publishFullAccessNotice();
     this.publishConfig();
     this.emit({ type: "session.commands", sessionId: this.options.id, commands: [] });
+    if (history === "replay" && this.conversationId !== null) {
+      const home = this.config.env.HOME ?? this.options.launch.env.HOME ?? homedir();
+      for (const entry of await readHistory(home, this.conversationId)) {
+        this.emit({ type: "timeline.item", sessionId: this.options.id, ...entry });
+      }
+    }
     this.emit({ type: "session.ready", requestId, sessionId: this.options.id });
   }
 

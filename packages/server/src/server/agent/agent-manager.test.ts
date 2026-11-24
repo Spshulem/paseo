@@ -10402,6 +10402,44 @@ test("closeAgent persists one final closed snapshot", async () => {
   }
 });
 
+test("restored old chats get a fresh runtime cleanup grace period", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-restored-idle-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+  const collect = runtimeCleanup(manager);
+  const oldActivity = new Date(Date.now() - 7 * 24 * 60 * 60_000);
+  let agentId: string | undefined;
+  try {
+    const original = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    agentId = original.id;
+    expect(original.persistence).not.toBeNull();
+    await manager.closeAgent(original.id);
+    const restored = await manager.resumeAgentFromPersistence(
+      original.persistence!,
+      { provider: "codex", cwd: workdir },
+      original.id,
+      { createdAt: oldActivity, updatedAt: oldActivity, lastUserMessageAt: oldActivity },
+    );
+    const openedAt = Date.now();
+    expect((await collect({ now: new Date(openedAt + 30_000) })).collected).toEqual([]);
+    expect(manager.getAgent(restored.id)?.updatedAt).toEqual(oldActivity);
+    expect((await storage.get(restored.id))?.updatedAt).toBe(oldActivity.toISOString());
+    expect((await collect({ now: new Date(openedAt + 61 * 60_000) })).collected).toEqual([
+      { agentId: restored.id, provider: "codex", sessionId: restored.persistence?.sessionId },
+    ]);
+  } finally {
+    if (agentId) await manager.closeAgent(agentId).catch(() => undefined);
+    await storage.flush();
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("idle runtime cleanup honors a provider veto and resumes the saved conversation", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-idle-cleanup-"));
   const storage = new AgentStorage(join(workdir, "agents"), logger);

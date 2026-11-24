@@ -156,6 +156,65 @@ async function harness(env: Record<string, string> = {}) {
   };
 }
 
+it("replays the saved conversation before readiness without submitting a new prompt", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "antigravity-home-"));
+  temporary.push(home);
+  const directory = path.join(
+    home,
+    ".gemini",
+    "antigravity-cli",
+    "brain",
+    "restored-conversation",
+    ".system_generated",
+    "logs",
+  );
+  await (await import("node:fs/promises")).mkdir(directory, { recursive: true });
+  await writeFile(
+    path.join(directory, "transcript_full.jsonl"),
+    [
+      {
+        step_index: 0,
+        type: "USER_INPUT",
+        status: "DONE",
+        created_at: "2026-11-10T21:13:51Z",
+        content: "Original user question",
+      },
+      {
+        step_index: 1,
+        type: "PLANNER_RESPONSE",
+        status: "DONE",
+        created_at: "2026-11-10T21:14:00Z",
+        content: "Original assistant answer",
+      },
+    ]
+      .map((record) => JSON.stringify(record))
+      .join("\n") + "\n",
+  );
+  const h = await harness({ HOME: home });
+  const persistence = { version: 1, data: { conversationId: "restored-conversation" } };
+  await h.open(persistence);
+  const replay = h.events.filter((event) => event.type === "timeline.item");
+  expect(replay.map((event) => event.type === "timeline.item" && event.item)).toMatchObject([
+    { type: "user_message", text: "Original user question" },
+    { type: "assistant_message", text: "Original assistant answer" },
+  ]);
+  expect(h.events.indexOf(replay[1]!)).toBeLessThan(
+    h.events.findIndex((event) => event.type === "session.ready"),
+  );
+  expect(replay[0]).toMatchObject({ timestamp: "2026-11-10T21:13:51Z" });
+  expect((await h.records()).some((record) => record.event === "user")).toBe(false);
+  const start = h.events.length;
+  await h.request({
+    type: "session.open",
+    requestId: "skip",
+    sessionId: "skipped",
+    persistence,
+    history: "skip",
+    config: { cwd: h.cwd, env: {}, settings: {}, mcpServers: {}, persist: true },
+  });
+  expect(h.events.slice(start).some((event) => event.type === "timeline.item")).toBe(false);
+});
+
 it("streams complete text snapshots, prefixes the system prompt only once and preserves launch argv/env", async () => {
   const h = await harness();
   expect(h.connection.capabilities).toEqual([
