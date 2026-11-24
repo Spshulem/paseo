@@ -465,9 +465,10 @@ test.describe("Workspace navigation regression", () => {
         timeout: 30_000,
       });
       await waitForWorkspaceTabsVisible(page);
-      await expectWorkspaceTabVisible(page, nonDefaultAgent.id);
-      await expectWorkspaceTabHidden(page, defaultAgent.id);
-      await expectOnlyWorkspaceAgentTabsVisible(page, [nonDefaultAgent.id]);
+      // Both conversations belong to this workspace, so both tabs render; the row must focus the
+      // latest one rather than the workspace's default tab.
+      await expectWorkspaceTabSelected(page, nonDefaultAgent.id, true);
+      await expectWorkspaceTabSelected(page, defaultAgent.id, false);
     } finally {
       await workspace.cleanup();
     }
@@ -658,3 +659,17 @@ test.describe("Workspace navigation regression", () => {
     }
   });
 });
+
+async function expectWorkspaceTabSelected(
+  page: Page,
+  agentId: string,
+  selected: boolean,
+): Promise<void> {
+  const tab = page.getByTestId(`workspace-tab-agent_${agentId}`).filter({ visible: true }).first();
+  await expect(tab).toBeVisible({ timeout: 30_000 });
+  if (selected) {
+    await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 30_000 });
+  } else {
+    await expect(tab).not.toHaveAttribute("aria-selected", "true", { timeout: 30_000 });
+  }
+}
