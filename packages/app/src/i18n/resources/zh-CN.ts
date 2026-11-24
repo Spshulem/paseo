@@ -257,6 +257,13 @@ export const zhCN: TranslationResources = {
       model: "切换 Model",
       mode: "更改模式",
     },
+    providerSwitch: {
+      title: "切换到 {{provider}}？",
+      message:
+        "将保留同一个聊天和 worktree。发送下一条消息时，最近的聊天摘录会发送给所选 Provider。",
+      confirm: "切换 Provider",
+      cancel: "取消",
+    },
   },
   agentStream: {
     empty: "开始和这个 Agent 对话...",

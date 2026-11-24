@@ -2,6 +2,21 @@ import { describe, expect, test } from "vitest";
 import { ProviderSubagentStore } from "./store.js";
 
 describe("ProviderSubagentStore", () => {
+  test("does not count unfinished transcript entries as live work", () => {
+    const subagents = new ProviderSubagentStore();
+    const running = { type: "upsert", id: "child", status: "running" } as const;
+    subagents.apply("parent", "claude", running, "history");
+    expect(subagents.list("parent")[0]?.status).toBe("running");
+    expect(subagents.hasLiveRunning("parent")).toBe(false);
+
+    subagents.apply("parent", "claude", running);
+    expect(subagents.hasLiveRunning("parent")).toBe(true);
+    subagents.apply("parent", "claude", { ...running, status: "completed" }, "history");
+    expect(subagents.hasLiveRunning("parent")).toBe(true);
+    subagents.apply("parent", "claude", { ...running, status: "completed" });
+    expect(subagents.hasLiveRunning("parent")).toBe(false);
+  });
+
   test("keeps provider children and their timelines scoped to the parent agent", () => {
     const subagents = new ProviderSubagentStore();
 

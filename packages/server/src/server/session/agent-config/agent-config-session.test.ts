@@ -12,6 +12,7 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
   readonly loadedAgentIds: string[] = [];
   readonly modeCalls: Array<{ agentId: string; modeId: string }> = [];
   readonly modelCalls: Array<{ agentId: string; modelId: string | null }> = [];
+  readonly switchCalls: Array<{ agentId: string; provider: string; modelId: string }> = [];
   readonly optionsCalls: Array<{ agentId: string; patch: Record<string, unknown> }> = [];
   readonly thinkingCalls: Array<{ agentId: string; thinkingOptionId: string | null }> = [];
   /** Cross-operation ordering, which the per-operation arrays above cannot show. */
@@ -37,6 +38,10 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
     this.modelCalls.push({ agentId, modelId });
     this.callLog.push("model");
     if (this.failWith) throw this.failWith;
+  }
+
+  async switchProvider(agentId: string, provider: string, modelId: string): Promise<void> {
+    this.switchCalls.push({ agentId, provider, modelId });
   }
 
   async setOptions(agentId: string, patch: Record<string, unknown>): Promise<void> {
@@ -69,6 +74,30 @@ function makeSubsystem() {
 }
 
 describe("AgentConfigSession", () => {
+  test("switches providers without loading the closed outgoing provider", async () => {
+    const { subsystem, emitted, operations } = makeSubsystem();
+    operations.loadFailure = new Error("Outgoing provider unavailable");
+
+    await subsystem.handleSetAgentModelRequest({
+      type: "set_agent_model_request",
+      agentId: "agent-1",
+      modelId: "gemini",
+      switchToProvider: "antigravity",
+      requestId: "req-1",
+    });
+
+    expect(operations.loadedAgentIds).toEqual([]);
+    expect(operations.switchCalls).toEqual([
+      { agentId: "agent-1", provider: "antigravity", modelId: "gemini" },
+    ]);
+    expect(emitted).toEqual([
+      expect.objectContaining({
+        type: "set_agent_model_response",
+        payload: expect.objectContaining({ accepted: true }),
+      }),
+    ]);
+  });
+
   test("set mode: forwards the args and emits an accepted response carrying the notice", async () => {
     const { subsystem, emitted, operations } = makeSubsystem();
     operations.modeNotice = { type: "info", message: "Switched to plan mode" };

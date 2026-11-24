@@ -257,6 +257,13 @@ export const ko: TranslationResources = {
       model: "모델 변경",
       mode: "모드 변경",
     },
+    providerSwitch: {
+      title: "{{provider}}(으)로 전환할까요?",
+      message:
+        "같은 채팅과 워크트리를 유지합니다. 다음 메시지를 보낼 때 최근 채팅 발췌가 선택한 프로바이더로 전송됩니다.",
+      confirm: "프로바이더 전환",
+      cancel: "취소",
+    },
   },
   agentStream: {
     empty: "이 에이전트와 대화를 시작하세요...",

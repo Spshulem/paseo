@@ -4441,17 +4441,27 @@ export class DaemonClient {
     return payload.notice ?? null;
   }
 
-  async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
+  async setAgentModel(
+    agentId: string,
+    modelId: string | null,
+    switchToProvider?: string,
+  ): Promise<void> {
+    // COMPAT(agentProviderSwitch): added in v0.18.0-beta.1, remove gate after 2027-05-24.
+    if (switchToProvider && this.lastServerInfoMessage?.features?.agentProviderSwitch !== true) {
+      throw new Error("Update this Paseo host to switch providers in the same chat");
+    }
     const requestId = this.createRequestId();
     const message = SessionInboundMessageSchema.parse({
       type: "set_agent_model_request",
       agentId,
       modelId,
+      switchToProvider,
       requestId,
     });
     const payload = await this.sendRequest({
       requestId,
       message,
+      timeout: switchToProvider ? 120_000 : undefined,
       options: { skipQueue: true },
       select: (msg) => {
         if (msg.type !== "set_agent_model_response") {

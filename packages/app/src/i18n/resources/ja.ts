@@ -259,6 +259,13 @@ export const ja: TranslationResources = {
       model: "モデルを変更",
       mode: "権限モードを変更",
     },
+    providerSwitch: {
+      title: "{{provider}} に切り替えますか？",
+      message:
+        "同じチャットと worktree をそのまま使います。次のメッセージで、最近のチャットの抜粋が選択したプロバイダーに送信されます。",
+      confirm: "プロバイダーを切り替え",
+      cancel: "キャンセル",
+    },
   },
   agentStream: {
     empty: "このエージェントとチャットを始めましょう...",

@@ -10,7 +10,9 @@ import {
   AgentMetricSchema,
   AgentOptionControlSchema,
   AgentStatusSchema,
+  AgentTimelineItemPayloadSchema,
 } from "../messages.js";
+import type { SeedAgentTimelineOptions } from "./agent-timeline-store.js";
 import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
@@ -41,15 +43,38 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
   .nullable()
   .optional();
 
-const PERSISTENCE_HANDLE_SCHEMA = z
-  .object({
-    provider: z.string(),
-    sessionId: z.string(),
-    nativeHandle: z.any().optional(),
-    metadata: z.record(z.string(), z.any()).optional(),
-  })
-  .nullable()
-  .optional();
+const PERSISTENCE_HANDLE_SCHEMA = z.object({
+  provider: z.string(),
+  sessionId: z.string(),
+  nativeHandle: z.any().optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
+});
+
+const SUSPENDED_PROVIDER_SESSION_SCHEMA = z.object({
+  provider: z.string(),
+  persistence: PERSISTENCE_HANDLE_SCHEMA.extend({
+    nativeHandle: z.string().optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  }).nullable(),
+  config: SERIALIZABLE_CONFIG_SCHEMA,
+  launchEnv: z.record(z.string(), z.string()).optional(),
+  checkpoint: z.object({ epoch: z.string(), seq: z.number().int().nonnegative() }),
+});
+
+const SWITCHED_TIMELINE_SCHEMA = z.object({
+  epoch: z.string(),
+  nextSeq: z.number().int().positive(),
+  rows: z.array(
+    z.object({
+      seq: z.number().int().positive(),
+      timestamp: z.string(),
+      item: AgentTimelineItemPayloadSchema,
+      turnId: z.string().optional(),
+      providerMessageId: z.string().optional(),
+      turnMetrics: z.array(AgentMetricSchema).optional(),
+    }),
+  ),
+});
 
 const RAW_STORED_AGENT_SCHEMA = z.object({
   id: z.string(),
@@ -81,8 +106,10 @@ const RAW_STORED_AGENT_SCHEMA = z.object({
   controls: z.array(AgentOptionControlSchema).optional(),
   // COMPAT(featureValues): added in v0.15.0, remove after 2027-05-01. Read-only; becomes controls.
   features: z.array(AgentFeatureSchema).optional(),
-  persistence: PERSISTENCE_HANDLE_SCHEMA,
+  persistence: PERSISTENCE_HANDLE_SCHEMA.nullable().optional(),
   sessionMetrics: z.array(AgentMetricSchema).optional(),
+  suspendedProviderSessions: z.array(SUSPENDED_PROVIDER_SESSION_SCHEMA).optional(),
+  pendingProviderHandoff: z.string().nullable().optional(),
   lastError: z.string().nullable().optional(),
   requiresAttention: z.boolean().optional(),
   attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
@@ -278,12 +305,17 @@ export class AgentStorage {
     providerHandleId: string,
   ): Promise<StoredAgentRecord[]> {
     await this.load();
-    return Array.from(this.cache.values()).filter(
-      (record) =>
-        record.persistence?.provider === provider &&
-        (record.persistence.sessionId === providerHandleId ||
-          record.persistence.nativeHandle === providerHandleId),
-    );
+    return Array.from(this.cache.values()).filter((record) => {
+      const handles = [
+        record.persistence,
+        ...(record.suspendedProviderSessions ?? []).map((entry) => entry.persistence),
+      ];
+      return handles.some(
+        (handle) =>
+          handle?.provider === provider &&
+          (handle.sessionId === providerHandleId || handle.nativeHandle === providerHandleId),
+      );
+    });
   }
 
   async listByWorkspace(workspaceId: string): Promise<StoredAgentRecord[]> {
@@ -368,6 +400,7 @@ export class AgentStorage {
     await this.load();
     this.beginDelete(agentId);
     await (this.pendingWrites.get(agentId) ?? Promise.resolve());
+    await fs.rm(this.switchedTimelinePath(agentId), { force: true });
     const paths = Array.from(this.pathsById.get(agentId) ?? []);
     await Promise.all(
       paths.map(async (filePath) => {
@@ -401,13 +434,22 @@ export class AgentStorage {
 
   async applySnapshot(
     agent: ManagedAgent,
-    options?: { title?: string | null; internal?: boolean },
+    options?: {
+      title?: string | null;
+      internal?: boolean;
+      providerSwitch?: Pick<
+        StoredAgentRecord,
+        "suspendedProviderSessions" | "pendingProviderHandoff"
+      >;
+      clearProviderHandoff?: boolean;
+    },
   ): Promise<void> {
     await this.load();
     const hasTitleOverride =
       options !== undefined && Object.prototype.hasOwnProperty.call(options, "title");
     const hasInternalOverride =
       options !== undefined && Object.prototype.hasOwnProperty.call(options, "internal");
+    // oxlint-disable-next-line complexity
     await this.queueRecordMutation(agent.id, (existing) => {
       const record = toStoredAgentRecord(agent, {
         title: hasTitleOverride ? (options?.title ?? null) : (existing?.title ?? null),
@@ -423,10 +465,39 @@ export class AgentStorage {
       }
       // Background is fixed at creation; a runtime opened without it cannot clear it.
       if (existing?.background) record.background = true;
+      record.suspendedProviderSessions =
+        options?.providerSwitch?.suspendedProviderSessions ?? existing?.suspendedProviderSessions;
+      record.pendingProviderHandoff = existing?.pendingProviderHandoff;
+      if (options?.clearProviderHandoff) record.pendingProviderHandoff = null;
+      if (options?.providerSwitch) {
+        record.pendingProviderHandoff = options.providerSwitch.pendingProviderHandoff;
+      }
       record.resumeOnStartup =
         existing?.resumeOnStartup && agent.lifecycle !== "idle" && agent.lifecycle !== "error";
       return record;
     });
+  }
+
+  // Stored separately so listing agents never parses their transcripts.
+  private switchedTimelinePath(agentId: string): string {
+    return path.join(
+      this.baseDir,
+      "..",
+      "switched-timelines",
+      `${encodeURIComponent(agentId)}.json`,
+    );
+  }
+
+  async writeSwitchedTimeline(
+    agentId: string,
+    timeline: z.infer<typeof SWITCHED_TIMELINE_SCHEMA>,
+  ): Promise<void> {
+    await writeJsonFileAtomic(this.switchedTimelinePath(agentId), timeline);
+  }
+
+  async readSwitchedTimeline(agentId: string): Promise<SeedAgentTimelineOptions> {
+    const text = await fs.readFile(this.switchedTimelinePath(agentId), "utf8");
+    return SWITCHED_TIMELINE_SCHEMA.parse(JSON.parse(text));
   }
 
   async setTitle(agentId: string, title: string): Promise<void> {

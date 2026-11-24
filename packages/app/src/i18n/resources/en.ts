@@ -255,6 +255,13 @@ export const en = {
       model: "Change model",
       mode: "Change mode",
     },
+    providerSwitch: {
+      title: "Switch to {{provider}}?",
+      message:
+        "This keeps the same chat and worktree. On your next message, recent chat excerpts will be sent to the selected provider.",
+      confirm: "Switch provider",
+      cancel: "Cancel",
+    },
   },
   agentStream: {
     empty: "Start chatting with this agent...",

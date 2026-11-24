@@ -46,6 +46,13 @@ Reload releases the old runtime before resuming its durable session: an idle pro
 still own an exclusive writer. A close failure retains that runtime for cleanup and blocks the
 replacement. Once closure succeeds, a failed resume leaves the durable agent closed and retryable.
 
+On a host that supports provider switching, select a Claude, Codex, or Antigravity model from the
+existing chat's model picker. The tab and worktree stay the same. A closed chat can switch without
+starting the outgoing provider. The next prompt includes bounded excerpts from the saved
+conversation. Switching back reopens the previous native session and hands it only the conversation
+it missed. Active work and pending permissions block switching. Rewind is unavailable on a shared
+timeline because the native provider can only rewind its own session.
+
 Idle resumable runtimes are collected after one hour without activity, checked once a minute.
 Collection releases the process and preserves the agent record, conversation, relationships, and
 provider session. The next prompt resumes that session. Set `agents.idleRuntimeCleanup: false` in

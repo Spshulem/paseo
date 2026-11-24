@@ -261,6 +261,13 @@ export const fr: TranslationResources = {
       model: "Changer de modèle",
       mode: "Changer de mode",
     },
+    providerSwitch: {
+      title: "Passer à {{provider}} ?",
+      message:
+        "La conversation et le worktree restent les mêmes. Avec votre prochain message, des extraits récents de la conversation seront envoyés au fournisseur sélectionné.",
+      confirm: "Changer de fournisseur",
+      cancel: "Annuler",
+    },
   },
   agentStream: {
     empty: "Commencez à discuter avec cet agent…",

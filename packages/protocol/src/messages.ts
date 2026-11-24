@@ -2199,6 +2199,8 @@ export const SetAgentModelRequestMessageSchema = z.object({
   type: z.literal("set_agent_model_request"),
   agentId: z.string(),
   modelId: z.string().nullable(),
+  // Moves the chat to this provider with `modelId`; gated on features.agentProviderSwitch.
+  switchToProvider: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -4090,6 +4092,10 @@ export const ServerInfoStatusPayloadSchema = z
         rewind: z.boolean().optional(),
         // COMPAT(agentTimelinePromptIndex): added in v0.2.X, drop the gate when floor >= v0.2.X.
         agentTimelinePromptIndex: z.boolean().optional(),
+        // COMPAT(agentProviderSwitch): added in v0.18.0-beta.1, remove gate after 2027-05-24.
+        agentProviderSwitch: z.boolean().optional(),
+        // COMPAT(agentProviderSwitchAntigravity): added in v0.18.0-beta.1, remove gate after 2027-05-24.
+        agentProviderSwitchAntigravity: z.boolean().optional(),
         // COMPAT(agentHistorySearch): added in v0.3.0, remove gate after 2027-02-07.
         agentHistorySearch: z.boolean().optional(),
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
