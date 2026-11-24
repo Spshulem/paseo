@@ -1140,6 +1140,13 @@ export class Session {
         setMode: async (agentId, modeId) =>
           (await setAgentModeCommand({ agentManager }, { agentId, modeId })).notice,
         setModel: (agentId, modelId) => agentManager.setAgentModel(agentId, modelId),
+        switchProvider: (agentId, provider, modelId) =>
+          agentManager.switchAgentProvider({
+            agentId,
+            provider,
+            modelId,
+            hasQueuedDelivery: () => this.agentMessages.hasPending(agentId),
+          }),
         setOptions: (agentId, patch) => agentManager.setAgentOptions(agentId, patch),
         setThinking: (agentId, thinkingOptionId) =>
           agentManager.setAgentThinkingOption(agentId, thinkingOptionId),

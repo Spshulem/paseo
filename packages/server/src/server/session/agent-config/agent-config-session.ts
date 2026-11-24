@@ -29,6 +29,7 @@ export interface AgentConfigOperations {
   ensureLoaded(agentId: string): Promise<void>;
   setMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null>;
   setModel(agentId: string, modelId: string | null): Promise<void>;
+  switchProvider?(agentId: string, provider: string, modelId: string): Promise<void>;
   setOptions(agentId: string, patch: ProviderOptionsPatch): Promise<void>;
   setThinking(
     agentId: string,
@@ -48,6 +49,7 @@ interface ConfigChange {
   logLabel: string;
   logFields: Record<string, unknown>;
   failureText: string;
+  skipEnsureLoaded?: boolean;
   run: () => Promise<AgentProviderNotice | null | undefined>;
   emitResponse: (payload: AgentActionResponsePayload) => void;
 }
@@ -88,15 +90,23 @@ export class AgentConfigSession {
   handleSetAgentModelRequest(
     msg: Extract<SessionInboundMessage, { type: "set_agent_model_request" }>,
   ): Promise<void> {
-    const { agentId, modelId, requestId } = msg;
+    const { agentId, modelId, requestId, switchToProvider } = msg;
     return this.applyConfigChange({
       agentId,
       requestId,
       logLabel: "set_agent_model_request",
-      logFields: { agentId, modelId, requestId },
+      logFields: { agentId, modelId, requestId, switchToProvider },
       failureText: "Failed to set agent model",
+      skipEnsureLoaded: switchToProvider !== undefined,
       run: async () => {
-        await this.operations.setModel(agentId, modelId);
+        if (switchToProvider !== undefined) {
+          if (!modelId || !this.operations.switchProvider) {
+            throw new Error("A target provider and model are required");
+          }
+          await this.operations.switchProvider(agentId, switchToProvider, modelId);
+        } else {
+          await this.operations.setModel(agentId, modelId);
+        }
         return undefined;
       },
       emitResponse: (payload) => this.host.emit({ type: "set_agent_model_response", payload }),
@@ -205,7 +215,7 @@ export class AgentConfigSession {
     this.logger.info(logFields, `session: ${logLabel}`);
 
     try {
-      await this.operations.ensureLoaded(agentId);
+      if (!change.skipEnsureLoaded) await this.operations.ensureLoaded(agentId);
       const notice = await run();
       this.logger.info(logFields, `session: ${logLabel} success`);
       emitResponse({ requestId, agentId, accepted: true, error: null, notice });

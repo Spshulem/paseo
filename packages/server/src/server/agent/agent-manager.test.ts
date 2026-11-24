@@ -4,7 +4,7 @@ import {
   formatAgentMessage,
   formatSystemNotificationPrompt,
 } from "./agent-messages/index.js";
-import { expect, test, vi, onTestFinished } from "vitest";
+import { describe, expect, test, vi, onTestFinished } from "vitest";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -11964,6 +11964,99 @@ test("close during in-flight stream does not clear persistence sessionId", async
 
   const persisted = await storage.get(snapshot.id);
   expect(persisted?.persistence?.sessionId).toBe(snapshot.persistence?.sessionId);
+});
+
+test("provider switching keeps the same chat and native sessions even when switching from closed", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "paseo-provider-switch-"));
+  onTestFinished(() => rmSync(cwd, { recursive: true, force: true }));
+  const storagePath = join(cwd, "agents");
+  let storage = new AgentStorage(storagePath, logger);
+  const prompts: AgentPromptInput[] = [];
+  const resumed: AgentPersistenceHandle[] = [];
+  class SwitchClient extends TestAgentClient {
+    private session(config: AgentSessionConfig, handle?: AgentPersistenceHandle) {
+      const session = new TestAgentSession(config);
+      vi.spyOn(session, "describePersistence").mockReturnValue({
+        provider: config.provider,
+        sessionId: handle?.sessionId ?? session.id,
+      });
+      const startTurn = session.startTurn.bind(session);
+      session.startTurn = async (prompt?: AgentPromptInput) => {
+        if (prompt !== undefined) prompts.push(prompt);
+        return startTurn();
+      };
+      return session;
+    }
+
+    override async createSession(config: AgentSessionConfig) {
+      return this.session(config);
+    }
+
+    override async resumeSession(handle: AgentPersistenceHandle, config: AgentSessionConfig) {
+      resumed.push(handle);
+      return this.session(config, handle);
+    }
+  }
+  const clients = {
+    claude: new SwitchClient("claude"),
+    codex: new SwitchClient("codex"),
+    antigravity: new SwitchClient("antigravity"),
+  };
+  const durableTimelineStore = new RecordingTimelineStore();
+  let manager = new AgentManager({ clients, registry: storage, logger, durableTimelineStore });
+  const { id } = await manager.createAgent({ provider: "claude", cwd }, undefined, {
+    workspaceId: undefined,
+  });
+  await manager.runAgent(id, "First Claude task", { clientMessageId: randomUUID() });
+  const claudeSessionId = (await storage.get(id))?.persistence?.sessionId;
+  expect(claudeSessionId).toBeTruthy();
+  const change = (provider: AgentProvider, modelId: string, queued = false) =>
+    manager.switchAgentProvider({
+      agentId: id,
+      provider,
+      modelId,
+      hasQueuedDelivery: () => queued,
+    });
+  await expect(change("codex", "gpt-5.4", true)).rejects.toThrow("active work");
+  expect(manager.getAgent(id)?.provider).toBe("claude");
+  await manager.closeAgent(id);
+  await manager.flush();
+  storage = new AgentStorage(storagePath, logger);
+  manager = new AgentManager({ clients, registry: storage, logger, durableTimelineStore });
+  expect(manager.getAgent(id)).toBeNull();
+  await expect(change("codex", "gpt-5.4", true)).rejects.toThrow("active work");
+  await change("codex", "gpt-5.4");
+  expect(resumed).toEqual([]);
+  expect(manager.getAgent(id)?.provider).toBe("codex");
+  await manager.runAgent(id, "Follow-up with Codex", { clientMessageId: randomUUID() });
+  expect(prompts.at(-1)).toEqual(expect.stringContaining("First Claude task"));
+  await manager.closeAgent(id);
+  await manager.flush();
+
+  storage = new AgentStorage(storagePath, logger);
+  manager = new AgentManager({ clients, registry: storage, logger, durableTimelineStore });
+  await change("antigravity", "gemini");
+  expect(manager.getTimeline(id)).toEqual([
+    expect.objectContaining({ type: "user_message", text: "First Claude task" }),
+    expect.objectContaining({ type: "user_message", text: "Follow-up with Codex" }),
+  ]);
+  await manager.runAgent(id, "Antigravity follow-up", { clientMessageId: randomUUID() });
+  expect(prompts.at(-1)).toEqual(expect.stringContaining("Follow-up with Codex"));
+  const antigravitySessionId = (await storage.get(id))?.persistence?.sessionId;
+  expect(antigravitySessionId).toBeTruthy();
+  await change("claude", "opus");
+  expect(resumed.at(-1)).toMatchObject({ provider: "claude", sessionId: claudeSessionId });
+  await manager.runAgent(id, "Back to Claude", { clientMessageId: randomUUID() });
+  expect(prompts.at(-1)).toEqual(expect.stringContaining("Follow-up with Codex"));
+  expect(prompts.at(-1)).not.toEqual(expect.stringContaining("First Claude task"));
+  expect(manager.getAgent(id)).toMatchObject({ id, provider: "claude", cwd });
+  await change("antigravity", "gemini");
+  expect(resumed.at(-1)).toMatchObject({
+    provider: "antigravity",
+    sessionId: antigravitySessionId,
+  });
+  await manager.closeAgent(id);
+  await manager.flush();
 });
 
 test("closeAgent persists one final closed snapshot", async () => {

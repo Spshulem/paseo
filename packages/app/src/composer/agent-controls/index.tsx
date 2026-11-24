@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/control-geometry";
 import { readMeasuredWidth } from "@/hooks/use-container-width";
 import { useToast } from "@/contexts/toast-context";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import {
@@ -991,6 +992,7 @@ function useAgentOptionControls(
   );
 }
 
+// oxlint-disable-next-line complexity
 export const AgentControls = memo(function AgentControls({
   agentId,
   serverId,
@@ -1002,6 +1004,18 @@ export const AgentControls = memo(function AgentControls({
     useShallow((state) => selectAgentControlsSlice(state, serverId, agentId)),
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  const supportsProviderSwitch = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.agentProviderSwitch === true,
+  );
+  const supportsAntigravitySwitch = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.serverInfo?.features?.agentProviderSwitchAntigravity === true,
+  );
+  const canSwitchProvider =
+    supportsProviderSwitch &&
+    (agent?.provider === "claude" ||
+      agent?.provider === "codex" ||
+      (agent?.provider === "antigravity" && supportsAntigravitySwitch));
   const toast = useToast();
   const modeControl = useLiveAgentModeControl(serverId, agentId);
   const commandCenterModes = toCommandCenterModes(modeControl);
@@ -1033,6 +1047,16 @@ export const AgentControls = memo(function AgentControls({
     [agent?.provider, models],
   );
   const agentModelSelectorProviders = useMemo(() => {
+    if (canSwitchProvider && snapshotEntries?.length) {
+      return buildSelectableProviderSelectorProviders(
+        snapshotEntries.filter(
+          ({ provider }) =>
+            provider === "claude" ||
+            provider === "codex" ||
+            (provider === "antigravity" && supportsAntigravitySwitch),
+        ),
+      );
+    }
     if (snapshotSelectedEntry) {
       return buildSelectableProviderSelectorProviders([snapshotSelectedEntry]);
     }
@@ -1040,7 +1064,14 @@ export const AgentControls = memo(function AgentControls({
       providerDefinitions: agentProviderDefinitions,
       modelsByProvider: agentProviderModels,
     });
-  }, [agentProviderDefinitions, agentProviderModels, snapshotSelectedEntry]);
+  }, [
+    agentProviderDefinitions,
+    agentProviderModels,
+    canSwitchProvider,
+    snapshotEntries,
+    snapshotSelectedEntry,
+    supportsAntigravitySwitch,
+  ]);
 
   const modelSelection = resolveAgentModelSelection({
     models,
@@ -1085,9 +1116,24 @@ export const AgentControls = memo(function AgentControls({
     },
     [agentId, agentProvider, client, toast, updatePreferences],
   );
-  const handleSelectCommandCenterModel = useCallback(
-    (_provider: AgentProvider, modelId: string) => handleSelectModel(modelId),
-    [handleSelectModel],
+  const handleSelectProviderModel = useCallback(
+    async (provider: AgentProvider, modelId: string) => {
+      if (provider === agentProvider) return handleSelectModel(modelId);
+      if (!canSwitchProvider || !client) return;
+      try {
+        const confirmed = await confirmDialog({
+          title: `Switch to ${provider === "claude" ? "Claude" : "Codex"}?`,
+          message:
+            "This keeps the same chat and worktree. On your next message, recent chat excerpts will be sent to the selected provider.",
+          confirmLabel: "Switch provider",
+        });
+        if (!confirmed) return;
+        await client.setAgentModel(agentId, modelId, provider);
+      } catch (error) {
+        toast.error(toErrorMessage(error));
+      }
+    },
+    [agentId, agentProvider, canSwitchProvider, client, handleSelectModel, toast],
   );
 
   // A running agent is one provider's process, so only that provider's profiles
@@ -1198,7 +1244,7 @@ export const AgentControls = memo(function AgentControls({
         providers: agentModelSelectorProviders,
         selectedProvider: agentProvider,
         selectedModelId: activeModelId,
-        select: handleSelectCommandCenterModel,
+        select: handleSelectProviderModel,
       },
       thinking: {
         options: modelSelection.thinkingOptions,
@@ -1216,7 +1262,7 @@ export const AgentControls = memo(function AgentControls({
       agentModelSelectorProviders,
       agentProvider,
       commandCenterModes,
-      handleSelectCommandCenterModel,
+      handleSelectProviderModel,
       handleSelectThinkingOption,
       modeProviderDefinitions,
       modelSelection.selectedThinkingId,
@@ -1258,6 +1304,7 @@ export const AgentControls = memo(function AgentControls({
         modelOptions={modelOptions}
         selectedModelId={modelSelection.activeModelId ?? undefined}
         onSelectModel={handleSelectModel}
+        onSelectProviderAndModel={canSwitchProvider ? handleSelectProviderModel : undefined}
         agentProfiles={agentProfiles}
         onApplyAgentProfile={agentProfiles?.applyProfile}
         onEditAgentProfiles={handleEditAgentProfiles}

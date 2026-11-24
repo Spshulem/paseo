@@ -297,6 +297,29 @@ describe("AgentStorage", () => {
     expect(persisted.config?.providerOptions).toEqual({ allowedTools: ["Read"] });
   });
 
+  test("active snapshots preserve suspended provider sessions after a daemon restart", async () => {
+    const id = "provider-handoff";
+    await storage.applySnapshot(createManagedAgent({ id, provider: "codex" }));
+    const record = await storage.get(id);
+    if (!record) throw new Error("Expected the active agent record");
+    const suspendedProviderSessions = [
+      {
+        provider: "claude",
+        persistence: { provider: "claude", sessionId: "original-claude-session" },
+        config: { model: "opus", modeId: "plan" },
+        checkpoint: { epoch: "original-timeline", seq: 14 },
+      },
+    ];
+    await storage.upsert({ ...record, suspendedProviderSessions });
+
+    const reopened = new AgentStorage(storagePath, createTestLogger());
+    await reopened.applySnapshot(createManagedAgent({ id, provider: "codex" }));
+    const saved = await new AgentStorage(storagePath, createTestLogger()).get(id);
+
+    expect(saved?.provider).toBe("codex");
+    expect(saved?.suspendedProviderSessions).toEqual(suspendedProviderSessions);
+  });
+
   test("applySnapshot stores and reloads composer values as providerOptions", async () => {
     await storage.applySnapshot(
       createManagedAgent({
