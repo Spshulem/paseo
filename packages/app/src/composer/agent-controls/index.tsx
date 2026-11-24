@@ -16,6 +16,7 @@ import { formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import {
   buildProviderSelectorProviders,
+  buildSelectableProviderSelectorProviders,
   buildSelectorProvider,
   type ProviderSelectorProvider,
 } from "@/provider-selection/provider-selection";
@@ -54,6 +55,7 @@ import {
 } from "@/components/ui/control-geometry";
 import { readMeasuredWidth } from "@/hooks/use-container-width";
 import { useToast } from "@/contexts/toast-context";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import {
@@ -1005,6 +1007,7 @@ function useAgentOptionControls(
   );
 }
 
+// oxlint-disable-next-line complexity
 export const AgentControls = memo(function AgentControls({
   showToolbar,
   agentId,
@@ -1012,11 +1015,26 @@ export const AgentControls = memo(function AgentControls({
   onDropdownClose,
   isCompactLayout,
 }: AgentControlsProps) {
+  const { t } = useTranslation();
   const { updatePreferences } = useFormPreferences();
   const agent = useSessionStore(
     useShallow((state) => selectAgentControlsSlice(state, serverId, agentId)),
   );
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  // COMPAT(agentProviderSwitch): added in v0.18.0-beta.1, remove gate after 2027-05-24.
+  const supportsProviderSwitch = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.agentProviderSwitch === true,
+  );
+  // COMPAT(agentProviderSwitchAntigravity): added in v0.18.0-beta.1, remove gate after 2027-05-24.
+  const supportsAntigravitySwitch = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.serverInfo?.features?.agentProviderSwitchAntigravity === true,
+  );
+  const canSwitchProvider =
+    supportsProviderSwitch &&
+    (agent?.provider === "claude" ||
+      agent?.provider === "codex" ||
+      (agent?.provider === "antigravity" && supportsAntigravitySwitch));
   const toast = useToast();
   const modeControl = useLiveAgentModeControl(serverId, agentId);
   const commandCenterModes = toCommandCenterModes(modeControl);
@@ -1048,6 +1066,17 @@ export const AgentControls = memo(function AgentControls({
     [agent?.provider, models],
   );
   const agentModelSelectorProviders = useMemo(() => {
+    if (canSwitchProvider && snapshotEntries?.length) {
+      return buildSelectableProviderSelectorProviders(
+        snapshotEntries.filter(
+          ({ provider }) =>
+            provider === "claude" ||
+            provider === "codex" ||
+            (provider === "antigravity" && supportsAntigravitySwitch),
+        ),
+        { selectedProvider: agent?.provider ?? null },
+      );
+    }
     if (snapshotSelectedEntry) {
       return [buildSelectorProvider(snapshotSelectedEntry)];
     }
@@ -1055,7 +1084,15 @@ export const AgentControls = memo(function AgentControls({
       providerDefinitions: agentProviderDefinitions,
       modelsByProvider: agentProviderModels,
     });
-  }, [agentProviderDefinitions, agentProviderModels, snapshotSelectedEntry]);
+  }, [
+    agent?.provider,
+    agentProviderDefinitions,
+    agentProviderModels,
+    canSwitchProvider,
+    snapshotEntries,
+    snapshotSelectedEntry,
+    supportsAntigravitySwitch,
+  ]);
 
   const modelSelection = resolveAgentModelSelection({
     models,
@@ -1100,9 +1137,34 @@ export const AgentControls = memo(function AgentControls({
     },
     [agentId, agentProvider, client, toast, updatePreferences],
   );
-  const handleSelectCommandCenterModel = useCallback(
-    (_provider: AgentProvider, modelId: string) => handleSelectModel(modelId),
-    [handleSelectModel],
+  const handleSelectProviderModel = useCallback(
+    async (provider: AgentProvider, modelId: string) => {
+      if (provider === agentProvider) return handleSelectModel(modelId);
+      if (!canSwitchProvider || !client) return;
+      const label = snapshotEntries?.find((entry) => entry.provider === provider)?.label;
+      try {
+        const confirmed = await confirmDialog({
+          title: t("agentControls.providerSwitch.title", { provider: label ?? provider }),
+          message: t("agentControls.providerSwitch.message"),
+          confirmLabel: t("agentControls.providerSwitch.confirm"),
+          cancelLabel: t("agentControls.providerSwitch.cancel"),
+        });
+        if (!confirmed) return;
+        await client.setAgentModel(agentId, modelId, provider);
+      } catch (error) {
+        toast.error(toErrorMessage(error));
+      }
+    },
+    [
+      agentId,
+      agentProvider,
+      canSwitchProvider,
+      client,
+      handleSelectModel,
+      snapshotEntries,
+      t,
+      toast,
+    ],
   );
 
   // A running agent is one provider's process, so only that provider's profiles
@@ -1213,7 +1275,7 @@ export const AgentControls = memo(function AgentControls({
         providers: agentModelSelectorProviders,
         selectedProvider: agentProvider,
         selectedModelId: activeModelId,
-        select: handleSelectCommandCenterModel,
+        select: handleSelectProviderModel,
       },
       thinking: {
         options: modelSelection.thinkingOptions,
@@ -1231,7 +1293,7 @@ export const AgentControls = memo(function AgentControls({
       agentModelSelectorProviders,
       agentProvider,
       commandCenterModes,
-      handleSelectCommandCenterModel,
+      handleSelectProviderModel,
       handleSelectThinkingOption,
       modeProviderDefinitions,
       modelSelection.selectedThinkingId,
@@ -1275,6 +1337,7 @@ export const AgentControls = memo(function AgentControls({
             modelOptions={modelOptions}
             selectedModelId={modelSelection.activeModelId ?? undefined}
             onSelectModel={handleSelectModel}
+            onSelectProviderAndModel={canSwitchProvider ? handleSelectProviderModel : undefined}
             agentProfiles={agentProfiles}
             onApplyAgentProfile={agentProfiles?.applyProfile}
             onEditAgentProfiles={handleEditAgentProfiles}

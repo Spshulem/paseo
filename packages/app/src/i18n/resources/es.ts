@@ -259,6 +259,13 @@ export const es: TranslationResources = {
       model: "Cambiar modelo",
       mode: "Cambiar modo",
     },
+    providerSwitch: {
+      title: "¿Cambiar a {{provider}}?",
+      message:
+        "Se mantienen el mismo chat y el mismo worktree. Con tu próximo mensaje, se enviarán fragmentos recientes del chat al proveedor seleccionado.",
+      confirm: "Cambiar proveedor",
+      cancel: "Cancelar",
+    },
   },
   agentStream: {
     empty: "Comience a chatear con este agente...",

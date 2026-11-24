@@ -258,6 +258,13 @@ export const ptBR: TranslationResources = {
       model: "Alterar modelo",
       mode: "Alterar modo de permissão",
     },
+    providerSwitch: {
+      title: "Mudar para {{provider}}?",
+      message:
+        "O mesmo chat e a mesma worktree são mantidos. Na sua próxima mensagem, trechos recentes do chat serão enviados ao provedor selecionado.",
+      confirm: "Mudar provedor",
+      cancel: "Cancelar",
+    },
   },
   agentStream: {
     empty: "Comece a conversar com este agente...",

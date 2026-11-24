@@ -77,16 +77,19 @@ function stickyField<T>(next: T | undefined, previous: T | null | undefined): T 
 
 export class ProviderSubagentStore {
   private readonly descriptors = new Map<string, ProviderSubagentDescriptor>();
+  private readonly liveRunning = new Map<string, string>();
   private readonly timelines = new InMemoryAgentTimelineStore();
 
   apply(
     parentAgentId: string,
     provider: AgentProvider,
     event: ProviderSubagentInputEvent,
+    source: "live" | "history" = "live",
   ): ProviderSubagentStoreEvent {
     const key = storeKey(parentAgentId, event.id);
     if (event.type === "remove") {
       this.descriptors.delete(key);
+      this.liveRunning.delete(key);
       this.timelines.delete(key);
       return { type: "remove", parentAgentId, subagentId: event.id };
     }
@@ -128,7 +131,30 @@ export class ProviderSubagentStore {
       parentSubagentId: stickyField(event.parentSubagentId, previous?.parentSubagentId),
     };
     this.descriptors.set(key, subagent);
+    if (source === "live") this.updateLiveStatus(key, parentAgentId, event.status, !previous);
     return { type: "upsert", subagent };
+  }
+
+  private updateLiveStatus(
+    key: string,
+    parentAgentId: string,
+    status: ProviderSubagentDescriptor["status"] | undefined,
+    isNew: boolean,
+  ): void {
+    // A transcript can end without the helper's final status. It is not a live task receipt.
+    if (status === "running" || (status === undefined && isNew)) {
+      this.liveRunning.set(key, parentAgentId);
+    } else if (status !== undefined) {
+      this.liveRunning.delete(key);
+    }
+  }
+
+  isLiveRunning(parentAgentId: string, subagentId: string): boolean {
+    return this.liveRunning.has(storeKey(parentAgentId, subagentId));
+  }
+
+  hasLiveRunning(parentAgentId: string): boolean {
+    return [...this.liveRunning.values()].includes(parentAgentId);
   }
 
   list(parentAgentId: string): ProviderSubagentDescriptor[] {
@@ -158,6 +184,7 @@ export class ProviderSubagentStore {
     for (const subagent of this.list(parentAgentId)) {
       const key = storeKey(parentAgentId, subagent.id);
       this.descriptors.delete(key);
+      this.liveRunning.delete(key);
       this.timelines.delete(key);
       events.push({ type: "remove", parentAgentId, subagentId: subagent.id });
     }

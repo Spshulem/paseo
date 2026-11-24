@@ -8,6 +8,7 @@ import {
   AgentStreamEventPayloadSchema,
   AgentTimelineItemPayloadSchema,
   ServerInfoStatusPayloadSchema,
+  SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
   WSHelloMessageSchema,
   WorkspaceSetupSnapshotSchema,
@@ -199,6 +200,28 @@ describe("wire schema compatibility", () => {
       version: null,
       features: { agentTurnIdentity: true },
     });
+  });
+
+  test("model requests switch providers only when they name one", () => {
+    const request = {
+      type: "set_agent_model_request",
+      agentId: "agent-1",
+      modelId: "gpt-5.4",
+      requestId: "req-1",
+    } as const;
+
+    expect(SessionInboundMessageSchema.parse(request)).toEqual(request);
+    expect(SessionInboundMessageSchema.parse({ ...request, switchToProvider: "codex" })).toEqual({
+      ...request,
+      switchToProvider: "codex",
+    });
+    expect(
+      ServerInfoStatusPayloadSchema.parse({
+        status: "server_info",
+        serverId: "switching-server",
+        features: { agentProviderSwitch: true, agentProviderSwitchAntigravity: true },
+      }).features,
+    ).toEqual({ agentProviderSwitch: true, agentProviderSwitchAntigravity: true });
   });
 
   test("assistant timeline message ids are optional on the wire", () => {

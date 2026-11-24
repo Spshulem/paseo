@@ -2170,6 +2170,10 @@ export class VoiceAssistantWebSocketServer {
         rewind: true,
         // COMPAT(agentTimelinePromptIndex): added in v0.2.X, drop the gate when floor >= v0.2.X.
         agentTimelinePromptIndex: true,
+        // COMPAT(agentProviderSwitch): added in v0.18.0-beta.1, remove gate after 2027-05-24.
+        agentProviderSwitch: true,
+        // COMPAT(agentProviderSwitchAntigravity): added in v0.18.0-beta.1, remove gate after 2027-05-24.
+        agentProviderSwitchAntigravity: true,
         // COMPAT(agentHistorySearch): added in v0.3.0, remove gate after 2027-02-07.
         agentHistorySearch: true,
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.

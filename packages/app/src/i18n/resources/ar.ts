@@ -257,6 +257,13 @@ export const ar: TranslationResources = {
       model: "تغيير النموذج",
       mode: "تغيير الوضع",
     },
+    providerSwitch: {
+      title: "التبديل إلى {{provider}}؟",
+      message:
+        "تبقى المحادثة وشجرة العمل كما هما. مع رسالتك التالية، ستُرسل مقتطفات حديثة من المحادثة إلى المزود المحدد.",
+      confirm: "تبديل المزود",
+      cancel: "إلغاء",
+    },
   },
   agentStream: {
     empty: "ابدأ الدردشة مع هذا الوكيل...",
