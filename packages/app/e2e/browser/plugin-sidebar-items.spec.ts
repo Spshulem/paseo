@@ -185,6 +185,9 @@ test.describe("Plugin sidebar items", () => {
     await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
     await expect(botRow(page, "status")).toBeAttached();
     const workspace = visibleTestId(page, `sidebar-workspace-row-${getServerId()}:${workspaceId}`);
+    // This build puts a Recents header above the workspace list, so on a short sidebar the row
+    // can start partly below the fold; the workspace list scrolls to it on its own.
+    await workspace.scrollIntoViewIfNeeded();
     await expect(workspace).toBeInViewport({ ratio: 1 });
 
     await test.step("scrolling navigation reaches its last row without moving workspaces", async () => {
@@ -215,6 +218,9 @@ test.describe("Plugin sidebar items", () => {
     await gotoAppShell(page);
     await expect(botRow(page, "status")).toBeAttached();
     const workspace = visibleTestId(page, `sidebar-workspace-row-${getServerId()}:${workspaceId}`);
+    // This build puts a Recents header above the workspace list, so on a short sidebar the row
+    // can start partly below the fold; the workspace list scrolls to it on its own.
+    await workspace.scrollIntoViewIfNeeded();
     await expect(workspace).toBeInViewport({ ratio: 1 });
     await expect(botRow(page, "status")).not.toBeInViewport();
 
