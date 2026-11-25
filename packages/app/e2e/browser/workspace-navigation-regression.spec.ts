@@ -19,6 +19,7 @@ import { clickNewChat } from "../support/helpers/launcher";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { seedWorkspace } from "../support/helpers/seed-client";
+import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
 import {
   getVisibleWorkspaceAgentTabIds,
   expectOnlyWorkspaceAgentTabsVisible,
@@ -431,6 +432,48 @@ test.describe("Workspace navigation regression", () => {
     }
   });
 
+  test("status rows open the latest exact agent when a workspace has multiple conversations", async ({
+    page,
+  }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "workspace-status-agent-target-" });
+
+    try {
+      const defaultAgent = await createMockIdleAgent(workspace.client, {
+        cwd: workspace.repoPath,
+        workspaceId: workspace.workspaceId,
+        title: "Default conversation",
+      });
+      const nonDefaultAgent = await createMockIdleAgent(workspace.client, {
+        cwd: workspace.repoPath,
+        workspaceId: workspace.workspaceId,
+        title: "Needs review conversation",
+      });
+      await workspace.client.sendAgentMessage(nonDefaultAgent.id, "mark the newer conversation");
+      await workspace.client.waitForFinish(nonDefaultAgent.id, 30_000);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await selectSidebarStatusGrouping(page);
+
+      const row = page
+        .getByTestId("sidebar-status-group-rows-attention")
+        .getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      await row.click();
+
+      await expect(page).toHaveURL(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId), {
+        timeout: 30_000,
+      });
+      await waitForWorkspaceTabsVisible(page);
+      // Both conversations belong to this workspace, so both tabs render; the row must focus the
+      // latest one rather than the workspace's default tab.
+      await expectWorkspaceTabSelected(page, nonDefaultAgent.id, true);
+      await expectWorkspaceTabSelected(page, defaultAgent.id, false);
+    } finally {
+      await workspace.cleanup();
+    }
+  });
+
   test("a stale notification workspace preserves retained workspace selection and tabs", async ({
     page,
   }) => {
@@ -616,3 +659,17 @@ test.describe("Workspace navigation regression", () => {
     }
   });
 });
+
+async function expectWorkspaceTabSelected(
+  page: Page,
+  agentId: string,
+  selected: boolean,
+): Promise<void> {
+  const tab = page.getByTestId(`workspace-tab-agent_${agentId}`).filter({ visible: true }).first();
+  await expect(tab).toBeVisible({ timeout: 30_000 });
+  if (selected) {
+    await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 30_000 });
+  } else {
+    await expect(tab).not.toHaveAttribute("aria-selected", "true", { timeout: 30_000 });
+  }
+}
